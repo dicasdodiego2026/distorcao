@@ -314,6 +314,7 @@ export const calculateGridStrategy = (data, selectedSMA) => {
             let maxDrawdown = 0; // relative to Avg Price
             let maxAdverseFromLast = 0; // relative to Last Grid Level
             let tradeCount = 0;
+            let tradeHistory = []; // Track individual trades
 
             // Simulation State
             let inTrade = false;
@@ -321,6 +322,8 @@ export const calculateGridStrategy = (data, selectedSMA) => {
             let avgPrice = 0;
             let peakAdverseTrade = 0;
             let peakAdverseFromLastTrade = 0;
+            let tradeEntryTime = null;
+            let tradeEntryPrice = 0;
 
             for (let i = 0; i < distortions.length; i++) {
                 const currentDist = distortions[i].val;
@@ -373,7 +376,7 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                         // Log trade to history
                         tradeHistory.push({
                             entryTime: tradeEntryTime,
-                            exitTime: hourFilteredDistortions[i].time,
+                            exitTime: distortions[i].time,
                             entryPrice: tradeEntryPrice,
                             exitPrice: currentDist,
                             avgPrice: avgPrice,
@@ -414,7 +417,8 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                     maxDrawdown, // from AvgPrice
                     stopFromLastGrid: recommendedStopFromLast, // relative to last entry
                     tradeCount,
-                    score
+                    score,
+                    tradeHistory: tradeHistory
                 });
             }
         });
