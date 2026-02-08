@@ -163,3 +163,45 @@ export const generateStats = (data, selectedSMA) => {
         histogram: histogramData
     };
 };
+
+export const aggregateByTime = (data, selectedSMA) => {
+    if (!data || data.length === 0) return [];
+
+    const buckets = {};
+
+    data.forEach(bar => {
+        // Ensure we have valid distortion data
+        const distKey = `dist${selectedSMA}`;
+        if (!bar.timestamp || bar[distKey] === null || bar[distKey] === undefined) return;
+
+        const date = new Date(bar.timestamp);
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes();
+
+        // Bucket by 30 minutes: 00-29 -> '00', 30-59 -> '30'
+        const interval = minutes < 30 ? '00' : '30';
+        const timeLabel = `${hours}:${interval}`;
+
+        if (!buckets[timeLabel]) {
+            buckets[timeLabel] = {
+                distortions: [],
+            };
+        }
+
+        // We are interested in absolute distortion for magnitude analysis
+        buckets[timeLabel].distortions.push(Math.abs(bar[distKey]));
+    });
+
+    return Object.keys(buckets).sort().map(timeLabel => {
+        const dists = buckets[timeLabel].distortions;
+        const avg = dists.reduce((a, b) => a + b, 0) / dists.length;
+        const max = Math.max(...dists);
+
+        return {
+            time: timeLabel,
+            avgDistortion: avg,
+            maxDistortion: max,
+            count: dists.length
+        };
+    });
+};

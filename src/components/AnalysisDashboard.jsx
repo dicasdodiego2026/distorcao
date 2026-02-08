@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-    BarChart, Bar, ScatterChart, Scatter, ZAxis, ReferenceLine
+    BarChart, Bar, ScatterChart, Scatter, ZAxis, ReferenceLine, ComposedChart, Area
 } from 'recharts';
 import { Upload, FileText, AlertCircle, Activity, BarChart2, TrendingUp, Clock, CheckCircle, Lightbulb, BookOpen } from 'lucide-react';
-import { parseLogData, calculateSMA, calculateDistortions, generateStats } from '../utils/calculations';
+import { parseLogData, calculateSMA, calculateDistortions, generateStats, aggregateByTime } from '../utils/calculations';
 import { FileUpload } from './FileUpload';
 
 const InsightCard = ({ title, icon: Icon, children }) => (
@@ -58,28 +58,9 @@ export function AnalysisDashboard() {
 
     const stats = useMemo(() => generateStats(data, selectedSMA), [data, selectedSMA]);
 
-    // Scatter plot data preparation: Correlation between Distortion (X) and Next Bar Return (Y)
-    const scatterData = useMemo(() => {
-        if (!data.length) return [];
-        return data.map((d, i) => {
-            if (i >= data.length - 1) return null;
-            const nextBar = data[i + 1];
-            const ret = (nextBar.close - d.close) / d.tick_size; // Return in ticks
-            const distortion = d[`dist${selectedSMA}`];
-
-            // Classification: Reversion vs Trend
-            // Reversion: (Dist > 0 && Ret < 0) OR (Dist < 0 && Ret > 0) -> Opposing signs
-            // Trend: (Dist > 0 && Ret > 0) OR (Dist < 0 && Ret < 0) -> Same signs
-            const isReversion = (distortion > 0 && ret < 0) || (distortion < 0 && ret > 0);
-
-            return {
-                distortion: distortion,
-                nextReturn: ret,
-                timestamp: d.timestamp,
-                status: isReversion ? "Reversão (Gain)" : "Tendência (Loss)",
-                fill: isReversion ? "#10b981" : "#f43f5e" // Emerald-500 vs Rose-500
-            };
-        }).filter(d => d && d.distortion !== null);
+    // Intraday Distortion Data: Aggregated by 30-min buckets
+    const intradayData = useMemo(() => {
+        return aggregateByTime(data, selectedSMA);
     }, [data, selectedSMA]);
 
     const CustomTooltip = ({ active, payload, label }) => {
@@ -278,64 +259,46 @@ export function AnalysisDashboard() {
                             </div>
 
                             {/* Scatter Plot */}
+                            {/* Intraday Distortion Chart */}
                             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl">
                                 <div className="flex items-center justify-between mb-6">
                                     <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                                        <TrendingUp className="w-5 h-5 text-indigo-500" />
-                                        Reversão vs Distorção
+                                        <Clock className="w-5 h-5 text-indigo-500" />
+                                        Sazonalidade Intraday (30 min)
                                     </h3>
                                 </div>
                                 <div className="h-64">
                                     <ResponsiveContainer width="100%" height="100%">
-                                        <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 0 }}>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                                        <ComposedChart data={intradayData} margin={{ top: 10, right: 10, bottom: 0, left: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                                             <XAxis
-                                                type="number"
-                                                dataKey="distortion"
-                                                name="Distorção Atual"
+                                                dataKey="time"
                                                 stroke="#64748b"
                                                 fontSize={12}
                                                 tickLine={false}
                                                 axisLine={false}
                                             />
                                             <YAxis
-                                                type="number"
-                                                dataKey="nextReturn"
-                                                name="Retorno Próx. Barra"
                                                 stroke="#64748b"
                                                 fontSize={12}
                                                 tickLine={false}
                                                 axisLine={false}
+                                                label={{ value: 'Distorção (Ticks)', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 10 }}
                                             />
-                                            <ZAxis type="category" dataKey="status" name="Resultado" />
-                                            <ReferenceLine y={0} stroke="#475569" strokeDasharray="3 3" />
-                                            <ReferenceLine x={0} stroke="#475569" strokeDasharray="3 3" />
-                                            <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip />} />
+                                            <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
                                             <Legend />
-                                            <Scatter name="Reversão (Lucro)" data={scatterData.filter(d => d.status.includes('Reversão'))} fill="#10b981" fillOpacity={0.6} />
-                                            <Scatter name="Tendência (Prejuízo)" data={scatterData.filter(d => d.status.includes('Tendência'))} fill="#f43f5e" fillOpacity={0.6} />
-                                        </ScatterChart>
+                                            <Bar name="Distorção Média" dataKey="avgDistortion" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={20} />
+                                            <Line type="monotone" name="Distorção Máxima" dataKey="maxDistortion" stroke="#f43f5e" strokeWidth={2} dot={{ r: 3 }} />
+                                            {stats && (
+                                                <ReferenceLine y={stats.avgAbs} stroke="#10b981" strokeDasharray="3 3" label={{ position: 'right', value: 'Média Geral', fill: '#10b981', fontSize: 10 }} />
+                                            )}
+                                        </ComposedChart>
                                     </ResponsiveContainer>
                                 </div>
-                                <InsightCard title="Raio-X da Estratégia" icon={Activity}>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <h4 className="font-bold text-emerald-400 mb-1">Pontos Verdes (Lucro)</h4>
-                                            <p className="text-xs text-slate-400">
-                                                Distorção Alta + Retorno Contrário.
-                                                <br />
-                                                Isso é o que queremos! Mostra que o preço "respeitou" o afastamento e voltou.
-                                            </p>
-                                        </div>
-                                        <div>
-                                            <h4 className="font-bold text-rose-400 mb-1">Pontos Vermelhos (Perigo)</h4>
-                                            <p className="text-xs text-slate-400">
-                                                Distorção Alta + Preço continuou indo embora.
-                                                <br />
-                                                <strong>Atenção:</strong> Se houver muitos vermelhos distantes do centro, evite operar contra a tendência nesse ativo.
-                                            </p>
-                                        </div>
-                                    </div>
+                                <InsightCard title="Horários de Oportunidade" icon={Clock}>
+                                    Identifique os horários onde a barra azul (média) é maior.
+                                    <br />
+                                    Nestes horários, o mercado tem <strong>maior volatilidade/elasticidade</strong>, sendo ideal para buscar alvos maiores. Se a barra for pequena, o mercado está "travado" (evite operar distorção longa).
                                 </InsightCard>
                             </div>
 
