@@ -3,8 +3,8 @@ import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
     BarChart, Bar, ScatterChart, Scatter, ZAxis, ReferenceLine, ComposedChart, Area
 } from 'recharts';
-import { Upload, FileText, AlertCircle, Activity, BarChart2, TrendingUp, Clock, CheckCircle, Lightbulb, BookOpen } from 'lucide-react';
-import { parseLogData, calculateSMA, calculateDistortions, generateStats, aggregateByTime } from '../utils/calculations';
+import { Upload, FileText, AlertCircle, Activity, BarChart2, TrendingUp, Clock, CheckCircle, Lightbulb, BookOpen, Target, Shield, Zap } from 'lucide-react';
+import { parseLogData, calculateSMA, calculateDistortions, generateStats, aggregateByTime, findOptimalStrategy } from '../utils/calculations';
 import { FileUpload } from './FileUpload';
 
 const InsightCard = ({ title, icon: Icon, children }) => (
@@ -61,6 +61,11 @@ export function AnalysisDashboard() {
     // Intraday Distortion Data: Aggregated by 30-min buckets
     const intradayData = useMemo(() => {
         return aggregateByTime(data, selectedSMA);
+    }, [data, selectedSMA]);
+
+    // Strategy Optimization
+    const strategies = useMemo(() => {
+        return findOptimalStrategy(data, selectedSMA);
     }, [data, selectedSMA]);
 
     const CustomTooltip = ({ active, payload, label }) => {
@@ -374,6 +379,123 @@ export function AnalysisDashboard() {
                                 </InsightCard>
                             </div>
                         </div>
+
+                        {/* Strategy Recommendations */}
+                        {strategies && (
+                            <div className="space-y-6">
+                                <h3 className="text-xl font-bold text-white flex items-center gap-2 border-l-4 border-indigo-500 pl-4">
+                                    <Target className="w-6 h-6 text-indigo-400" />
+                                    Melhores Estratégias Encontradas
+                                </h3>
+                                <p className="text-slate-400 text-sm">
+                                    Com base na análise histórica de reversão à média, estas são as configurações sugeridas para maximizar seus ganhos.
+                                </p>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    {/* Conservative */}
+                                    <div className="bg-slate-900 border border-slate-700/50 rounded-2xl p-6 relative overflow-hidden group hover:border-emerald-500/50 transition-all duration-300">
+                                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                                            <Shield className="w-24 h-24 text-emerald-500" />
+                                        </div>
+                                        <div className="relative z-10">
+                                            <div className="flex items-center gap-2 mb-4 text-emerald-400 font-bold uppercase tracking-wider text-sm">
+                                                <Shield className="w-4 h-4" />
+                                                Conservador
+                                            </div>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <span className="text-slate-500 text-xs uppercase font-bold">Gatilho de Entrada</span>
+                                                    <p className="text-2xl font-bold text-white">Distorção {strategies.conservative.threshold} ticks</p>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <span className="text-slate-500 text-xs uppercase font-bold">Take Profit</span>
+                                                        <p className="text-lg font-bold text-emerald-400">{strategies.conservative.profit} ticks</p>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-slate-500 text-xs uppercase font-bold">Stop Loss</span>
+                                                        <p className="text-lg font-bold text-rose-400">{strategies.conservative.suggestedStop} ticks</p>
+                                                    </div>
+                                                </div>
+                                                <div className="pt-4 border-t border-slate-800">
+                                                    <p className="text-xs text-slate-400">
+                                                        Taxa de acerto estimada alta, mas ocorre com menor frequência ({strategies.conservative.count} oportunidades).
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Balanced */}
+                                    <div className="bg-slate-800 border-2 border-indigo-500/30 rounded-2xl p-6 relative overflow-hidden shadow-2xl shadow-indigo-900/20 transform scale-105 z-10">
+                                        <div className="absolute top-0 right-0 p-4 opacity-10">
+                                            <Target className="w-24 h-24 text-indigo-500" />
+                                        </div>
+                                        <div className="relative z-10">
+                                            <div className="flex items-center gap-2 mb-4 text-indigo-400 font-bold uppercase tracking-wider text-sm">
+                                                <Target className="w-4 h-4" />
+                                                Equilibrado (Recomendado)
+                                            </div>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <span className="text-slate-400 text-xs uppercase font-bold">Gatilho de Entrada</span>
+                                                    <p className="text-3xl font-bold text-white">Distorção {strategies.balanced.threshold} ticks</p>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <span className="text-slate-400 text-xs uppercase font-bold">Take Profit</span>
+                                                        <p className="text-xl font-bold text-emerald-400">{strategies.balanced.profit} ticks</p>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-slate-400 text-xs uppercase font-bold">Stop Loss</span>
+                                                        <p className="text-xl font-bold text-rose-400">{strategies.balanced.suggestedStop} ticks</p>
+                                                    </div>
+                                                </div>
+                                                <div className="pt-4 border-t border-slate-700">
+                                                    <p className="text-xs text-slate-300">
+                                                        Melhor equilíbrio entre risco e retorno. Ocorreu {strategies.balanced.count} vezes no período analisado.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Aggressive */}
+                                    <div className="bg-slate-900 border border-slate-700/50 rounded-2xl p-6 relative overflow-hidden group hover:border-amber-500/50 transition-all duration-300">
+                                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                                            <Zap className="w-24 h-24 text-amber-500" />
+                                        </div>
+                                        <div className="relative z-10">
+                                            <div className="flex items-center gap-2 mb-4 text-amber-400 font-bold uppercase tracking-wider text-sm">
+                                                <Zap className="w-4 h-4" />
+                                                Agressivo
+                                            </div>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <span className="text-slate-500 text-xs uppercase font-bold">Gatilho de Entrada</span>
+                                                    <p className="text-2xl font-bold text-white">Distorção {strategies.aggressive.threshold} ticks</p>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <span className="text-slate-500 text-xs uppercase font-bold">Take Profit</span>
+                                                        <p className="text-lg font-bold text-emerald-400">{strategies.aggressive.profit} ticks</p>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-slate-500 text-xs uppercase font-bold">Stop Loss</span>
+                                                        <p className="text-lg font-bold text-rose-400">{strategies.aggressive.suggestedStop} ticks</p>
+                                                    </div>
+                                                </div>
+                                                <div className="pt-4 border-t border-slate-800">
+                                                    <p className="text-xs text-slate-400">
+                                                        Alta frequência ({strategies.aggressive.count} trades), mas exige stop loss maior devido à volatilidade nessa faixa.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* New File Button */}
                         <div className="flex justify-center pt-8 pb-12">

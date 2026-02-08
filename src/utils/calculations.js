@@ -205,3 +205,79 @@ export const aggregateByTime = (data, selectedSMA) => {
         };
     });
 };
+
+export const findOptimalStrategy = (data, selectedSMA) => {
+    if (!data || data.length === 0) return null;
+
+    const distKey = `dist${selectedSMA}`;
+    const distortions = data
+        .filter(d => d[distKey] !== null)
+        .map(d => Math.abs(d[distKey]));
+
+    if (distortions.length === 0) return null;
+
+    const maxVal = Math.max(...distortions);
+    // Generate thresholds every 5 ticks
+    const thresholds = [];
+    for (let t = 5; t < maxVal; t += 5) thresholds.push(t);
+
+    const results = [];
+
+    thresholds.forEach(threshold => {
+        let count = 0;
+        let totalMAE = 0; // Max Adverse Excursion (drawdown)
+
+        let inTrade = false;
+        let entryPrice = 0; // Conceptual 'distortion' level
+        let peakDistortion = 0;
+
+        // Iterate through time series to simulate trades
+        for (let i = 0; i < data.length; i++) {
+            const val = Math.abs(data[i][distKey]);
+            if (!val && val !== 0) continue;
+
+            if (!inTrade && val >= threshold) {
+                // Enter Reward: Reversion to 0 (Profit = threshold)
+                inTrade = true;
+                peakDistortion = val;
+                count++;
+            }
+
+            if (inTrade) {
+                if (val > peakDistortion) peakDistortion = val;
+
+                // Exit: Reversion near 0 (e.g. < 20% of threshold or < 2 ticks)
+                if (val < 2) {
+                    inTrade = false;
+                    // Drawdown = Peak - Entry
+                    totalMAE += (peakDistortion - threshold);
+                }
+            }
+        }
+
+        if (count >= 5) {
+            const avgMAE = totalMAE / count;
+            const suggestedStop = Math.ceil(avgMAE + (avgMAE * 0.5) + 5);
+            const score = (threshold / suggestedStop) * Math.log(count); // Weight profit vs risk vs frequency
+
+            results.push({
+                threshold,
+                count,
+                avgMAE,
+                suggestedStop,
+                profit: threshold,
+                score
+            });
+        }
+    });
+
+    if (results.length === 0) return null;
+    results.sort((a, b) => b.score - a.score);
+
+    // Defensive selection
+    const balanced = results[0];
+    const conservative = results.filter(r => r.threshold > balanced.threshold)[0] || balanced;
+    const aggressive = results.filter(r => r.count > balanced.count * 1.5)[0] || results[results.length - 1];
+
+    return { balanced, conservative, aggressive };
+};
