@@ -515,8 +515,8 @@ export function AnalysisDashboard() {
                                                 <Layers className="w-8 h-8 text-indigo-400" />
                                             </div>
                                             <div>
-                                                <h3 className="text-2xl font-bold text-white tracking-tight">Estratégia de Grid (Preço Médio)</h3>
-                                                <p className="text-slate-400 text-sm">Otimização para aumento de taxa de acerto via escalonamento.</p>
+                                                <h3 className="text-2xl font-bold text-white tracking-tight">Estratégia Global (Dia Inteiro)</h3>
+                                                <p className="text-slate-400 text-sm">Parâmetros otimizados usando todos os horários do dia.</p>
                                             </div>
                                         </div>
                                         <div className="bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-lg text-emerald-400 text-sm font-semibold animate-pulse">
@@ -584,6 +584,108 @@ export function AnalysisDashboard() {
                                         <div className="flex items-center gap-2">
                                             <Clock className="w-4 h-4 text-amber-400" />
                                             <span><strong>Melhor Horário:</strong> {gridStrategy.bestTimeWindow} (DD: {gridStrategy.bestTimeWindowDrawdown.toFixed(0)} ticks)</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Time-Specific Strategy */}
+                        {gridStrategy && gridStrategy.timeSpecificStrategy && (
+                            <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl p-8 border border-amber-500/20 shadow-2xl mt-8">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <div className="p-3 bg-amber-500/10 rounded-xl">
+                                        <Clock className="w-8 h-8 text-amber-400" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-2xl font-bold text-white">Estratégia para {gridStrategy.bestTimeWindow}</h3>
+                                        <p className="text-sm text-slate-400 mt-1">Parâmetros otimizados especificamente para este horário</p>
+                                    </div>
+                                </div>
+
+                                <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 mb-6">
+                                    <div className="flex items-start gap-2">
+                                        <Lightbulb className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" />
+                                        <p className="text-sm text-slate-300 leading-relaxed">
+                                            <strong className="text-amber-400">Use esta configuração</strong> quando operar no horário recomendado.
+                                            Os parâmetros foram otimizados usando apenas dados deste período específico.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                        <div className="bg-slate-950/50 p-6 rounded-xl border border-amber-500/10 hover:border-amber-500/30 transition-colors">
+                                            <span className="text-xs font-bold text-amber-300 uppercase tracking-wider mb-2 block">1. Entrada</span>
+                                            <div className="text-4xl font-black text-amber-400 tracking-tight flex items-baseline gap-1">
+                                                {gridStrategy.timeSpecificStrategy.initialEntry}
+                                                <span className="text-lg text-slate-500 font-medium">ticks</span>
+                                            </div>
+                                            <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                                                Abra posição quando distorção atingir {gridStrategy.timeSpecificStrategy.initialEntry} ticks.
+                                            </p>
+                                        </div>
+
+                                        <div className="bg-slate-950/50 p-6 rounded-xl border border-indigo-500/10 hover:border-indigo-500/30 transition-colors">
+                                            <span className="text-xs font-bold text-indigo-300 uppercase tracking-wider mb-2 block">2. Passo do Grid</span>
+                                            <div className="text-4xl font-black text-indigo-400 tracking-tight flex items-baseline gap-1">
+                                                {gridStrategy.timeSpecificStrategy.step}
+                                                <span className="text-lg text-slate-500 font-medium">ticks</span>
+                                            </div>
+                                            <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                                                Adicione novos lotes a cada {gridStrategy.timeSpecificStrategy.step} ticks. Max: {gridStrategy.timeSpecificStrategy.maxLayers} camadas.
+                                            </p>
+                                        </div>
+
+                                        <div className="bg-slate-950/50 p-6 rounded-xl border border-rose-500/10 hover:border-rose-500/30 transition-colors group">
+                                            <span className="text-xs font-bold text-rose-300 uppercase tracking-wider mb-2 block group-hover:text-rose-200 transition-colors">Proteção (Stop)</span>
+                                            <div className="text-4xl font-black text-rose-400 tracking-tight flex items-baseline gap-1">
+                                                {gridStrategy.timeSpecificStrategy.stopFromLastGrid}
+                                                <span className="text-lg text-slate-500 font-medium">ticks</span>
+                                            </div>
+                                            <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                                                <strong className="text-rose-300">Do ÚLTIMO grid:</strong> Coloque stop {gridStrategy.timeSpecificStrategy.stopFromLastGrid} ticks abaixo da última adição.
+                                            </p>
+                                        </div>
+
+                                        <div className="bg-slate-950/50 p-6 rounded-xl border border-emerald-500/10 hover:border-emerald-500/30 transition-colors group">
+                                            <span className="text-xs font-bold text-emerald-300 uppercase tracking-wider mb-2 block group-hover:text-emerald-200 transition-colors">Alvo (Take Profit)</span>
+                                            <div className="text-4xl font-black text-emerald-400 tracking-tight flex items-baseline gap-1">
+                                                {gridStrategy.timeSpecificStrategy.targetProfitTicks}
+                                                <span className="text-lg text-slate-500 font-medium">ticks</span>
+                                            </div>
+                                            <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                                                <strong className="text-emerald-300">Do Preço Médio:</strong> Saia quando preço atingir média - {gridStrategy.timeSpecificStrategy.targetProfitTicks} ticks.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div className="bg-slate-950/30 p-4 rounded-lg border border-slate-700/30">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <TrendingUp className="w-4 h-4 text-emerald-400" />
+                                                <span className="text-xs text-slate-400 uppercase tracking-wider">Lucro Simulado</span>
+                                            </div>
+                                            <div className="text-2xl font-bold text-emerald-400">+{gridStrategy.timeSpecificStrategy.totalProfit.toFixed(0)} ticks</div>
+                                            <p className="text-xs text-slate-500 mt-1">Em {gridStrategy.timeSpecificStrategy.tradeCount} operações neste horário</p>
+                                        </div>
+
+                                        <div className="bg-slate-950/30 p-4 rounded-lg border border-slate-700/30">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <Shield className="w-4 h-4 text-rose-400" />
+                                                <span className="text-xs text-slate-400 uppercase tracking-wider">Drawdown Máximo</span>
+                                            </div>
+                                            <div className="text-2xl font-bold text-rose-400">{gridStrategy.timeSpecificStrategy.maxDrawdown.toFixed(0)} ticks</div>
+                                            <p className="text-xs text-slate-500 mt-1">Pior caso observado neste horário</p>
+                                        </div>
+
+                                        <div className="bg-slate-950/30 p-4 rounded-lg border border-slate-700/30">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <Layers className="w-4 h-4 text-indigo-400" />
+                                                <span className="text-xs text-slate-400 uppercase tracking-wider">Camadas Máximas</span>
+                                            </div>
+                                            <div className="text-2xl font-bold text-indigo-400">{gridStrategy.timeSpecificStrategy.maxLayers}</div>
+                                            <p className="text-xs text-slate-500 mt-1">Número máximo de adições permitidas</p>
                                         </div>
                                     </div>
                                 </div>

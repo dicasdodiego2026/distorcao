@@ -530,10 +530,116 @@ export const calculateGridStrategy = (data, selectedSMA) => {
         };
     }
 
+    // --- TIME-SPECIFIC STRATEGY OPTIMIZATION ---
+    // Re-optimize parameters using ONLY data from the recommended hour
+    let timeSpecificStrategy = null;
+
+    if (bestWindow.label !== "Dia Todo" && hours.length > 0) {
+        // Extract the recommended hour
+        const bestHourMatch = bestWindow.label.match(/(\d+):00/);
+        if (bestHourMatch) {
+            const recommendedHour = parseInt(bestHourMatch[1]);
+
+            // Filter distortions to only include the recommended hour
+            const hourFilteredDistortions = distortions.filter(d => {
+                const date = new Date(d.time);
+                return date.getHours() === recommendedHour;
+            });
+
+            if (hourFilteredDistortions.length > 20) { // Need minimum data
+                // Re-run optimization with filtered data
+                const timeResults = [];
+
+                entries.forEach(initialEntry => {
+                    steps.forEach(step => {
+                        let totalProfit = 0;
+                        let maxDrawdown = 0;
+                        let maxAdverseFromLast = 0;
+                        let tradeCount = 0;
+
+                        let inTrade = false;
+                        let currentLayers = 0;
+                        let avgPrice = 0;
+                        let peakAdverseTrade = 0;
+                        let peakAdverseFromLastTrade = 0;
+
+                        for (let i = 0; i < hourFilteredDistortions.length; i++) {
+                            const currentDist = hourFilteredDistortions[i].val;
+
+                            if (!inTrade) {
+                                if (currentDist >= initialEntry) {
+                                    inTrade = true;
+                                    currentLayers = 1;
+                                    avgPrice = initialEntry;
+                                    peakAdverseTrade = 0;
+                                    peakAdverseFromLastTrade = 0;
+                                }
+                            } else {
+                                const lastGridLevel = initialEntry + (step * (currentLayers - 1));
+                                const nextLevel = initialEntry + (step * currentLayers);
+
+                                if (currentLayers < maxLayers && currentDist >= nextLevel) {
+                                    currentLayers++;
+                                    avgPrice = ((avgPrice * (currentLayers - 1)) + nextLevel) / currentLayers;
+                                }
+
+                                const currentFloat = currentDist - avgPrice;
+                                if (currentFloat > peakAdverseTrade) peakAdverseTrade = currentFloat;
+
+                                const currentAdverseFromLast = currentDist - (initialEntry + (step * (currentLayers - 1)));
+                                if (currentAdverseFromLast > peakAdverseFromLastTrade) peakAdverseFromLastTrade = currentAdverseFromLast;
+
+                                const targetExit = Math.max(0, avgPrice - targetProfitTicks);
+
+                                if (currentDist <= targetExit) {
+                                    const profitPerShare = avgPrice - currentDist;
+                                    const totalTradeProfit = profitPerShare * currentLayers;
+
+                                    totalProfit += totalTradeProfit;
+                                    tradeCount++;
+
+                                    if (peakAdverseTrade > maxDrawdown) maxDrawdown = peakAdverseTrade;
+                                    if (peakAdverseFromLastTrade > maxAdverseFromLast) maxAdverseFromLast = peakAdverseFromLastTrade;
+
+                                    inTrade = false;
+                                    currentLayers = 0;
+                                    avgPrice = 0;
+                                }
+                            }
+                        }
+
+                        if (tradeCount > 2) { // Lower threshold for time-specific
+                            const score = totalProfit / (maxDrawdown || 1);
+                            const recommendedStopFromLast = Math.ceil(maxAdverseFromLast + 5);
+
+                            timeResults.push({
+                                initialEntry,
+                                step,
+                                maxLayers,
+                                totalProfit,
+                                maxDrawdown,
+                                stopFromLastGrid: recommendedStopFromLast,
+                                tradeCount,
+                                score,
+                                targetProfitTicks
+                            });
+                        }
+                    });
+                });
+
+                if (timeResults.length > 0) {
+                    timeResults.sort((a, b) => b.score - a.score);
+                    timeSpecificStrategy = timeResults[0];
+                }
+            }
+        }
+    }
+
     return {
         ...bestConfig,
         bestTimeWindow: bestWindow.label,
         bestTimeWindowDrawdown: bestWindow.drawdown || 0,
-        worstDrawdownHour: worstDrawdownHour.hour
+        worstDrawdownHour: worstDrawdownHour.hour,
+        timeSpecificStrategy: timeSpecificStrategy // New: strategy optimized for recommended hour
     };
 };
