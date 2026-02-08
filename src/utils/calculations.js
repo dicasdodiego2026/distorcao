@@ -472,12 +472,16 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                 }
             }
 
-            if (tradeCount > 3) {
+            if (tradeCount > 5) {
                 // Score = Profit / MaxDrawdown
                 const score = totalProfit / (maxDrawdown || 1);
 
                 // Recommended Stop: MaxAdverseFromLast + Buffer (e.g. 5 ticks)
                 const recommendedStopFromLast = Math.ceil(maxAdverseFromLast + 5);
+
+                // Count BUY vs SELL trades
+                const buyCount = tradeHistory.filter(t => t.direction === 'BUY').length;
+                const sellCount = tradeHistory.filter(t => t.direction === 'SELL').length;
 
                 results.push({
                     initialEntry,
@@ -489,7 +493,9 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                     stopFromLastGrid: recommendedStopFromLast, // relative to last entry
                     tradeCount,
                     score,
-                    tradeHistory: tradeHistory
+                    tradeHistory: tradeHistory,
+                    buyCount,
+                    sellCount
                 });
             }
         });

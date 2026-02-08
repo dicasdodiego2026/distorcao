@@ -677,7 +677,15 @@ export function AnalysisDashboard() {
                                                 <span className="text-xs text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity ml-auto">Clique para detalhes →</span>
                                             </div>
                                             <div className="text-2xl font-bold text-emerald-400">+{gridStrategy.timeSpecificStrategy.totalProfit.toFixed(0)} ticks</div>
-                                            <p className="text-xs text-slate-500 mt-1">Em {gridStrategy.timeSpecificStrategy.tradeCount} operações neste horário</p>
+                                            <p className="text-xs text-slate-500 mt-1">
+                                                {gridStrategy.timeSpecificStrategy.tradeCount} operações
+                                                {gridStrategy.timeSpecificStrategy.buyCount !== undefined && (
+                                                    <span className="ml-1">
+                                                        (🟢 {gridStrategy.timeSpecificStrategy.buyCount} compras,
+                                                        🔴 {gridStrategy.timeSpecificStrategy.sellCount} vendas)
+                                                    </span>
+                                                )}
+                                            </p>
                                         </div>
 
                                         <div className="bg-slate-950/30 p-4 rounded-lg border border-slate-700/30">
