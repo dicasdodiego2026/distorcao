@@ -1,0 +1,65 @@
+// Helper function to add trade history tracking to time-specific optimization
+// This will be integrated into calculations.js
+
+// Add after line 558 (let tradeCount = 0;):
+let tradeHistory = []; // Track individual trades
+
+// Add after line 564 (let peakAdverseFromLastTrade = 0;):
+let tradeEntryTime = null;
+let tradeEntryPrice = 0;
+
+// Modify trade entry (around line 570-575) to capture entry time:
+if (!inTrade) {
+    if (currentDist >= initialEntry) {
+        inTrade = true;
+        currentLayers = 1;
+        avgPrice = initialEntry;
+        peakAdverseTrade = 0;
+        peakAdverseFromLastTrade = 0;
+        tradeEntryTime = hourFilteredDistortions[i].time; // CAPTURE ENTRY TIME
+        tradeEntryPrice = initialEntry;
+    }
+}
+
+// Modify trade exit (around line 594-607) to log trade details:
+if (currentDist <= targetExit) {
+    const profitPerShare = avgPrice - currentDist;
+    const totalTradeProfit = profitPerShare * currentLayers;
+    
+    // LOG TRADE TO HISTORY
+    tradeHistory.push({
+        entryTime: tradeEntryTime,
+        exitTime: hourFilteredDistortions[i].time,
+        entryPrice: tradeEntryPrice,
+        exitPrice: currentDist,
+        avgPrice: avgPrice,
+        layers: currentLayers,
+        profit: totalTradeProfit,
+        direction: 'SELL', // Grid strategy is always selling distortion
+        drawdown: peakAdverseTrade
+    });
+    
+    totalProfit += totalTradeProfit;
+    tradeCount++;
+    
+    if (peakAdverseTrade > maxDrawdown) maxDrawdown = peakAdverseTrade;
+    if (peakAdverseFromLastTrade > maxAdverseFromLast) maxAdverseFromLast = peakAdverseFromLastTrade;
+    
+    inTrade = false;
+    currentLayers = 0;
+    avgPrice = 0;
+}
+
+// Modify result push (around line 615-625) to include tradeHistory:
+timeResults.push({
+    initialEntry,
+    step,
+    maxLayers,
+    totalProfit,
+    maxDrawdown,
+    stopFromLastGrid: recommendedStopFromLast,
+    tradeCount,
+    score,
+    targetProfitTicks,
+    tradeHistory: tradeHistory // ADD THIS
+});

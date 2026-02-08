@@ -665,7 +665,11 @@ export function AnalysisDashboard() {
                                     <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <div
                                             className="bg-slate-950/30 p-4 rounded-lg border border-slate-700/30 cursor-pointer hover:border-emerald-500/50 hover:bg-slate-900/50 transition-all group"
-                                            onClick={() => setShowTradeHistory(true)}
+                                            onClick={() => {
+                                                console.log('Card clicked! Opening modal...');
+                                                console.log('Trade history:', gridStrategy.timeSpecificStrategy.tradeHistory);
+                                                setShowTradeHistory(true);
+                                            }}
                                         >
                                             <div className="flex items-center gap-2 mb-1">
                                                 <TrendingUp className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />

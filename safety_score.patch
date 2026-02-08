@@ -1,0 +1,46 @@
+--- a/src/utils/calculations.js
++++ b/src/utils/calculations.js
+@@ -497,11 +497,34 @@
+     let worstDrawdownHour = { hour: "N/A", value: 0 };
+     const hours = Object.keys(hourStats).filter(h => hourStats[h].profit > 0);
+     
+     if (hours.length > 0) {
+-        hours.sort((a, b) => hourStats[b].profit - hourStats[a].profit); // Highest Profit First
+-        const bestHour = parseInt(hours[0]);
++        // Calculate safety scores
++        const hourScores = hours.map(h => {
++            const stats = hourStats[h];
++            const safetyScore = stats.profit / (stats.maxDrawdown + 1);
++            return {
++                hour: parseInt(h),
++                profit: stats.profit,
++                drawdown: stats.maxDrawdown,
++                safetyScore,
++                count: stats.count
++            };
++        });
++        
++        // Sort by safety score (best risk-adjusted performance)
++        hourScores.sort((a, b) => b.safetyScore - a.safetyScore);
++        
++        const bestHour = hourScores[0].hour;
+         const endHour = bestHour + 1;
+         
+         const formatH = (h) => h < 10 ? `0${h}` : `${h}`;
+         bestWindow = { label: `${formatH(bestHour)}:00 às ${formatH(endHour)}:00` };
++        
++        // Find worst drawdown
++        hourScores.sort((a, b) => b.drawdown - a.drawdown);
++        const worstHour = hourScores[0].hour;
++        worstDrawdownHour = {
++            hour: `${formatH(worstHour)}:00`,
++            value: hourScores[0].drawdown
++        };
+     }
+     
+     return { 
+         ...bestConfig, 
+         bestTimeWindow: bestWindow.label,
+-        worstDrawdownHour: "N/A" // Placeholder - will update logic next
++        worstDrawdownHour: worstDrawdownHour.hour
+     };

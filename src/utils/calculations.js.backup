@@ -333,8 +333,6 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                         avgPrice = initialEntry;
                         peakAdverseTrade = 0;
                         peakAdverseFromLastTrade = 0;
-                        tradeEntryTime = hourFilteredDistortions[i].time;
-                        tradeEntryPrice = initialEntry;
                     }
                 } else {
                     // MANAGE TRADE
@@ -369,19 +367,6 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                         // CLOSE TRADE
                         const profitPerShare = avgPrice - currentDist;
                         const totalTradeProfit = profitPerShare * currentLayers;
-
-                        // Log trade to history
-                        tradeHistory.push({
-                            entryTime: tradeEntryTime,
-                            exitTime: hourFilteredDistortions[i].time,
-                            entryPrice: tradeEntryPrice,
-                            exitPrice: currentDist,
-                            avgPrice: avgPrice,
-                            layers: currentLayers,
-                            profit: totalTradeProfit,
-                            direction: 'SELL',
-                            drawdown: peakAdverseTrade
-                        });
 
                         totalProfit += totalTradeProfit;
                         tradeCount++;
@@ -487,7 +472,7 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                 const date = new Date(tradeStartTime);
                 const hour = date.getHours(); // 0-23 (number)
 
-                if (!hourStats[hour]) hourStats[hour] = { profit: 0, maxDrawdown: 0, count: 0 };
+                if (!hourStats[hour]) hourStats[hour] = { profit: 0, count: 0 };
 
                 const profitPerShare = avgPrice - currentDist;
                 const totalTradeProfit = profitPerShare * currentLayers;
@@ -495,185 +480,25 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                 hourStats[hour].profit += totalTradeProfit;
                 hourStats[hour].count += 1;
 
-                // Update max drawdown for this hour
-                if (peakAdverseThisTrade > hourStats[hour].maxDrawdown) {
-                    hourStats[hour].maxDrawdown = peakAdverseThisTrade;
-                }
-
                 inTrade = false;
                 currentLayers = 0;
             }
         }
     }
 
-    // Find Best Window (Safety Score = Profit / Drawdown)
-    // Also find Worst Drawdown Hour
+    // Find Best Window
+    // Simple logic: Best single hour for now
     let bestWindow = { label: "Dia Todo" };
-    let worstDrawdownHour = { hour: "N/A", value: 0 };
     const hours = Object.keys(hourStats).filter(h => hourStats[h].profit > 0);
 
     if (hours.length > 0) {
-        // Calculate safety scores
-        const hourScores = hours.map(h => {
-            const stats = hourStats[h];
-            const safetyScore = stats.profit / (stats.maxDrawdown + 1);
-            return {
-                hour: parseInt(h),
-                profit: stats.profit,
-                drawdown: stats.maxDrawdown,
-                safetyScore,
-                count: stats.count
-            };
-        });
-
-        // Sort by safety score (best risk-adjusted performance)
-        hourScores.sort((a, b) => b.safetyScore - a.safetyScore);
-
-        const bestHour = hourScores[0].hour;
-        const bestHourDrawdown = hourScores[0].drawdown; // Drawdown of recommended hour
+        hours.sort((a, b) => hourStats[b].profit - hourStats[a].profit); // Highest Profit First
+        const bestHour = parseInt(hours[0]);
         const endHour = bestHour + 1;
 
         const formatH = (h) => h < 10 ? `0${h}` : `${h}`;
-        bestWindow = { label: `${formatH(bestHour)}:00 às ${formatH(endHour)}:00`, drawdown: bestHourDrawdown };
-
-        // Find worst drawdown
-        hourScores.sort((a, b) => b.drawdown - a.drawdown);
-        const worstHour = hourScores[0].hour;
-        worstDrawdownHour = {
-            hour: `${formatH(worstHour)}:00`,
-            value: hourScores[0].drawdown
-        };
+        bestWindow = { label: `${formatH(bestHour)}:00 às ${formatH(endHour)}:00` };
     }
 
-    // --- TIME-SPECIFIC STRATEGY OPTIMIZATION ---
-    // Re-optimize parameters using ONLY data from the recommended hour
-    let timeSpecificStrategy = null;
-
-    if (bestWindow.label !== "Dia Todo" && hours.length > 0) {
-        // Extract the recommended hour
-        const bestHourMatch = bestWindow.label.match(/(\d+):00/);
-        if (bestHourMatch) {
-            const recommendedHour = parseInt(bestHourMatch[1]);
-
-            // Filter distortions to only include the recommended hour
-            const hourFilteredDistortions = distortions.filter(d => {
-                const date = new Date(d.time);
-                return date.getHours() === recommendedHour;
-            });
-
-            if (hourFilteredDistortions.length > 20) { // Need minimum data
-                // Re-run optimization with filtered data
-                const timeResults = [];
-
-                entries.forEach(initialEntry => {
-                    steps.forEach(step => {
-                        let totalProfit = 0;
-                        let maxDrawdown = 0;
-                        let maxAdverseFromLast = 0;
-                        let tradeCount = 0;
-                        let tradeHistory = []; // Track individual trades
-
-                        let inTrade = false;
-                        let currentLayers = 0;
-                        let avgPrice = 0;
-                        let peakAdverseTrade = 0;
-                        let peakAdverseFromLastTrade = 0;
-                        let tradeEntryTime = null;
-                        let tradeEntryPrice = 0;
-
-                        for (let i = 0; i < hourFilteredDistortions.length; i++) {
-                            const currentDist = hourFilteredDistortions[i].val;
-
-                            if (!inTrade) {
-                                if (currentDist >= initialEntry) {
-                                    inTrade = true;
-                                    currentLayers = 1;
-                                    avgPrice = initialEntry;
-                                    peakAdverseTrade = 0;
-                                    peakAdverseFromLastTrade = 0;
-                                    tradeEntryTime = hourFilteredDistortions[i].time;
-                                    tradeEntryPrice = initialEntry;
-                                }
-                            } else {
-                                const lastGridLevel = initialEntry + (step * (currentLayers - 1));
-                                const nextLevel = initialEntry + (step * currentLayers);
-
-                                if (currentLayers < maxLayers && currentDist >= nextLevel) {
-                                    currentLayers++;
-                                    avgPrice = ((avgPrice * (currentLayers - 1)) + nextLevel) / currentLayers;
-                                }
-
-                                const currentFloat = currentDist - avgPrice;
-                                if (currentFloat > peakAdverseTrade) peakAdverseTrade = currentFloat;
-
-                                const currentAdverseFromLast = currentDist - (initialEntry + (step * (currentLayers - 1)));
-                                if (currentAdverseFromLast > peakAdverseFromLastTrade) peakAdverseFromLastTrade = currentAdverseFromLast;
-
-                                const targetExit = Math.max(0, avgPrice - targetProfitTicks);
-
-                                if (currentDist <= targetExit) {
-                                    const profitPerShare = avgPrice - currentDist;
-                                    const totalTradeProfit = profitPerShare * currentLayers;
-
-                                    // Log trade to history
-                                    tradeHistory.push({
-                                        entryTime: tradeEntryTime,
-                                        exitTime: hourFilteredDistortions[i].time,
-                                        entryPrice: tradeEntryPrice,
-                                        exitPrice: currentDist,
-                                        avgPrice: avgPrice,
-                                        layers: currentLayers,
-                                        profit: totalTradeProfit,
-                                        direction: 'SELL',
-                                        drawdown: peakAdverseTrade
-                                    });
-
-                                    totalProfit += totalTradeProfit;
-                                    tradeCount++;
-
-                                    if (peakAdverseTrade > maxDrawdown) maxDrawdown = peakAdverseTrade;
-                                    if (peakAdverseFromLastTrade > maxAdverseFromLast) maxAdverseFromLast = peakAdverseFromLastTrade;
-
-                                    inTrade = false;
-                                    currentLayers = 0;
-                                    avgPrice = 0;
-                                }
-                            }
-                        }
-
-                        if (tradeCount > 2) { // Lower threshold for time-specific
-                            const score = totalProfit / (maxDrawdown || 1);
-                            const recommendedStopFromLast = Math.ceil(maxAdverseFromLast + 5);
-
-                            timeResults.push({
-                                initialEntry,
-                                step,
-                                maxLayers,
-                                totalProfit,
-                                maxDrawdown,
-                                stopFromLastGrid: recommendedStopFromLast,
-                                tradeCount,
-                                score,
-                                targetProfitTicks,
-                                tradeHistory: tradeHistory
-                            });
-                        }
-                    });
-                });
-
-                if (timeResults.length > 0) {
-                    timeResults.sort((a, b) => b.score - a.score);
-                    timeSpecificStrategy = timeResults[0];
-                }
-            }
-        }
-    }
-
-    return {
-        ...bestConfig,
-        bestTimeWindow: bestWindow.label,
-        bestTimeWindowDrawdown: bestWindow.drawdown || 0,
-        worstDrawdownHour: worstDrawdownHour.hour,
-        timeSpecificStrategy: timeSpecificStrategy // New: strategy optimized for recommended hour
-    };
+    return { ...bestConfig, bestTimeWindow: bestWindow.label };
 };
