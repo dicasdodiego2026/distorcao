@@ -341,66 +341,73 @@ export const calculateGridStrategy = (data, selectedSMA) => {
             for (let i = 0; i < distortions.length; i++) {
                 const currentDist = distortions[i].val;
 
+                // Ensure numeric types
+                const distVal = Number(currentDist);
+                const entryVal = Number(initialEntry);
+
                 if (!inTrade) {
+                    // DEBUG: Check why BUY is not triggering
+                    if (distVal <= -20 && i % 100 === 0) { // Sample logs to avoid freezing
+                        console.log(`[DEBUG] Potential BUY? Dist=${distVal}, EntryThreshold=${-entryVal}, Condition=${distVal <= -entryVal}`);
+                    }
+
                     // Check for SELL entry (positive distortion)
-                    if (currentDist >= initialEntry) {
+                    if (distVal >= entryVal) {
                         inTrade = true;
                         tradeDirection = 'SELL';
                         currentLayers = 1;
-                        avgPrice = initialEntry;
+                        avgPrice = entryVal;
                         peakAdverseTrade = 0;
                         peakAdverseFromLastTrade = 0;
                         tradeEntryTime = distortions[i].time;
-                        tradeEntryPrice = initialEntry;
-                        console.log(`SELL Entry: dist=${currentDist}, entry=${initialEntry}`);
+                        tradeEntryPrice = entryVal;
+                        // console.log(`SELL Entry: dist=${distVal}, entry=${entryVal}`);
                     }
                     // Check for BUY entry (negative distortion)
-                    else if (currentDist <= -initialEntry) {
+                    else if (distVal <= -entryVal) {
                         inTrade = true;
                         tradeDirection = 'BUY';
                         currentLayers = 1;
-                        avgPrice = -initialEntry;
+                        avgPrice = -entryVal;
                         peakAdverseTrade = 0;
                         peakAdverseFromLastTrade = 0;
                         tradeEntryTime = distortions[i].time;
-                        tradeEntryPrice = -initialEntry;
-                        console.log(`BUY Entry: dist=${currentDist}, entry=${-initialEntry}`);
+                        tradeEntryPrice = -entryVal;
+                        console.log(`BUY Entry TRIGGERED: dist=${distVal}, entry=${-entryVal}, time=${distortions[i].time}`);
                     }
                 } else {
                     // MANAGE TRADE
                     if (tradeDirection === 'SELL') {
-                        const lastGridLevel = initialEntry + (step * (currentLayers - 1));
-
                         // 1. Check for Additions (Grid)
-                        const nextLevel = initialEntry + (step * currentLayers);
+                        const nextLevel = entryVal + (step * currentLayers);
 
-                        if (currentLayers < maxLayers && currentDist >= nextLevel) {
+                        if (currentLayers < maxLayers && distVal >= nextLevel) {
                             // ADD LAYER
                             currentLayers++;
                             avgPrice = ((avgPrice * (currentLayers - 1)) + nextLevel) / currentLayers;
                         }
 
                         // 2. Track Drawdown
-                        const currentFloat = currentDist - avgPrice;
+                        const currentFloat = distVal - avgPrice;
                         if (currentFloat > peakAdverseTrade) peakAdverseTrade = currentFloat;
 
                         // 3. Track Adverse from Last Grid
-                        const currentAdverseFromLast = currentDist - (initialEntry + (step * (currentLayers - 1)));
+                        const currentAdverseFromLast = distVal - (entryVal + (step * (currentLayers - 1)));
                         if (currentAdverseFromLast > peakAdverseFromLastTrade) peakAdverseFromLastTrade = currentAdverseFromLast;
 
                         // 4. Check for Exit
                         const targetExit = Math.max(0, avgPrice - targetProfitTicks);
 
-                        if (currentDist <= targetExit) {
+                        if (distVal <= targetExit) {
                             // CLOSE TRADE
-                            const profitPerShare = avgPrice - currentDist;
+                            const profitPerShare = avgPrice - distVal;
                             const totalTradeProfit = profitPerShare * currentLayers;
 
                             tradeHistory.push({
                                 entryTime: tradeEntryTime,
                                 exitTime: distortions[i].time,
                                 entryPrice: tradeEntryPrice,
-                                exitPrice: currentDist,
+                                exitPrice: distVal,
                                 avgPrice: avgPrice,
                                 layers: currentLayers,
                                 profit: totalTradeProfit,
@@ -419,38 +426,36 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                             avgPrice = 0;
                         }
                     } else { // BUY
-                        const lastGridLevel = -initialEntry - (step * (currentLayers - 1));
-
                         // 1. Check for Additions (Grid)
-                        const nextLevel = -initialEntry - (step * currentLayers);
+                        const nextLevel = -entryVal - (step * currentLayers);
 
-                        if (currentLayers < maxLayers && currentDist <= nextLevel) {
+                        if (currentLayers < maxLayers && distVal <= nextLevel) {
                             // ADD LAYER
                             currentLayers++;
                             avgPrice = ((avgPrice * (currentLayers - 1)) + nextLevel) / currentLayers;
                         }
 
                         // 2. Track Drawdown
-                        const currentFloat = avgPrice - currentDist;
+                        const currentFloat = avgPrice - distVal;
                         if (currentFloat > peakAdverseTrade) peakAdverseTrade = currentFloat;
 
                         // 3. Track Adverse from Last Grid
-                        const currentAdverseFromLast = (-initialEntry - (step * (currentLayers - 1))) - currentDist;
+                        const currentAdverseFromLast = (-entryVal - (step * (currentLayers - 1))) - distVal;
                         if (currentAdverseFromLast > peakAdverseFromLastTrade) peakAdverseFromLastTrade = currentAdverseFromLast;
 
                         // 4. Check for Exit
-                        const targetExit = avgPrice + targetProfitTicks;
+                        const targetExit = avgPrice + targetProfitTicks; // Exit is higher than avgPrice
 
-                        if (currentDist >= targetExit) {
+                        if (distVal >= targetExit) {
                             // CLOSE TRADE
-                            const profitPerShare = currentDist - avgPrice;
+                            const profitPerShare = distVal - avgPrice;
                             const totalTradeProfit = profitPerShare * currentLayers;
 
                             tradeHistory.push({
                                 entryTime: tradeEntryTime,
                                 exitTime: distortions[i].time,
                                 entryPrice: tradeEntryPrice,
-                                exitPrice: currentDist,
+                                exitPrice: distVal,
                                 avgPrice: avgPrice,
                                 layers: currentLayers,
                                 profit: totalTradeProfit,
@@ -665,57 +670,62 @@ export const calculateGridStrategy = (data, selectedSMA) => {
 
                         for (let i = 0; i < hourFilteredDistortions.length; i++) {
                             const currentDist = hourFilteredDistortions[i].val;
+                            const distVal = Number(currentDist);
+                            const entryVal = Number(initialEntry);
 
                             if (!inTrade) {
                                 // Check for SELL entry (positive distortion)
-                                if (currentDist >= initialEntry) {
+                                if (distVal >= entryVal) {
                                     inTrade = true;
                                     tradeDirection = 'SELL';
                                     currentLayers = 1;
-                                    avgPrice = initialEntry;
+                                    avgPrice = entryVal;
                                     peakAdverseTrade = 0;
                                     peakAdverseFromLastTrade = 0;
                                     tradeEntryTime = hourFilteredDistortions[i].time;
-                                    tradeEntryPrice = initialEntry;
+                                    tradeEntryPrice = entryVal;
                                 }
                                 // Check for BUY entry (negative distortion)
-                                else if (currentDist <= -initialEntry) {
+                                else if (distVal <= -entryVal) {
                                     inTrade = true;
                                     tradeDirection = 'BUY';
                                     currentLayers = 1;
-                                    avgPrice = -initialEntry;
+                                    avgPrice = -entryVal;
                                     peakAdverseTrade = 0;
                                     peakAdverseFromLastTrade = 0;
                                     tradeEntryTime = hourFilteredDistortions[i].time;
-                                    tradeEntryPrice = -initialEntry;
+                                    tradeEntryPrice = -entryVal;
                                 }
                             } else {
                                 if (tradeDirection === 'SELL') {
-                                    const lastGridLevel = initialEntry + (step * (currentLayers - 1));
-                                    const nextLevel = initialEntry + (step * currentLayers);
+                                    // 1. Check for Additions (Grid)
+                                    const nextLevel = entryVal + (step * currentLayers);
 
-                                    if (currentLayers < maxLayers && currentDist >= nextLevel) {
+                                    if (currentLayers < maxLayers && distVal >= nextLevel) {
                                         currentLayers++;
                                         avgPrice = ((avgPrice * (currentLayers - 1)) + nextLevel) / currentLayers;
                                     }
 
-                                    const currentFloat = currentDist - avgPrice;
+                                    // 2. Track Drawdown
+                                    const currentFloat = distVal - avgPrice;
                                     if (currentFloat > peakAdverseTrade) peakAdverseTrade = currentFloat;
 
-                                    const currentAdverseFromLast = currentDist - (initialEntry + (step * (currentLayers - 1)));
+                                    // 3. Track Adverse from Last Grid
+                                    const currentAdverseFromLast = distVal - (entryVal + (step * (currentLayers - 1)));
                                     if (currentAdverseFromLast > peakAdverseFromLastTrade) peakAdverseFromLastTrade = currentAdverseFromLast;
 
+                                    // 4. Check for Exit
                                     const targetExit = Math.max(0, avgPrice - targetProfitTicks);
 
-                                    if (currentDist <= targetExit) {
-                                        const profitPerShare = avgPrice - currentDist;
+                                    if (distVal <= targetExit) {
+                                        const profitPerShare = avgPrice - distVal;
                                         const totalTradeProfit = profitPerShare * currentLayers;
 
                                         tradeHistory.push({
                                             entryTime: tradeEntryTime,
                                             exitTime: hourFilteredDistortions[i].time,
                                             entryPrice: tradeEntryPrice,
-                                            exitPrice: currentDist,
+                                            exitPrice: distVal,
                                             avgPrice: avgPrice,
                                             layers: currentLayers,
                                             profit: totalTradeProfit,
@@ -734,31 +744,34 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                                         avgPrice = 0;
                                     }
                                 } else { // BUY
-                                    const lastGridLevel = -initialEntry - (step * (currentLayers - 1));
-                                    const nextLevel = -initialEntry - (step * currentLayers);
+                                    // 1. Check for Additions (Grid)
+                                    const nextLevel = -entryVal - (step * currentLayers);
 
-                                    if (currentLayers < maxLayers && currentDist <= nextLevel) {
+                                    if (currentLayers < maxLayers && distVal <= nextLevel) {
                                         currentLayers++;
                                         avgPrice = ((avgPrice * (currentLayers - 1)) + nextLevel) / currentLayers;
                                     }
 
-                                    const currentFloat = avgPrice - currentDist;
+                                    // 2. Track Drawdown
+                                    const currentFloat = avgPrice - distVal;
                                     if (currentFloat > peakAdverseTrade) peakAdverseTrade = currentFloat;
 
-                                    const currentAdverseFromLast = (-initialEntry - (step * (currentLayers - 1))) - currentDist;
+                                    // 3. Track Adverse from Last Grid
+                                    const currentAdverseFromLast = (-entryVal - (step * (currentLayers - 1))) - distVal;
                                     if (currentAdverseFromLast > peakAdverseFromLastTrade) peakAdverseFromLastTrade = currentAdverseFromLast;
 
-                                    const targetExit = avgPrice + targetProfitTicks;
+                                    // 4. Check for Exit
+                                    const targetExit = avgPrice + targetProfitTicks; // Exit higher than avg
 
-                                    if (currentDist >= targetExit) {
-                                        const profitPerShare = currentDist - avgPrice;
+                                    if (distVal >= targetExit) {
+                                        const profitPerShare = distVal - avgPrice;
                                         const totalTradeProfit = profitPerShare * currentLayers;
 
                                         tradeHistory.push({
                                             entryTime: tradeEntryTime,
                                             exitTime: hourFilteredDistortions[i].time,
                                             entryPrice: tradeEntryPrice,
-                                            exitPrice: currentDist,
+                                            exitPrice: distVal,
                                             avgPrice: avgPrice,
                                             layers: currentLayers,
                                             profit: totalTradeProfit,
