@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, TrendingDown, Calendar, Clock, DollarSign, Layers, BarChart3 } from 'lucide-react';
+import { X, TrendingDown, TrendingUp, Calendar, Clock, DollarSign, Layers, BarChart3 } from 'lucide-react';
 
 export const TradeHistoryModal = ({ isOpen, onClose, tradeHistory, timeWindow }) => {
     if (!isOpen || !tradeHistory || !Array.isArray(tradeHistory) || tradeHistory.length === 0) return null;
@@ -128,8 +128,14 @@ export const TradeHistoryModal = ({ isOpen, onClose, tradeHistory, timeWindow })
                                                 <div>
                                                     <div className="text-xs text-slate-500 uppercase tracking-wider mb-1">Direção</div>
                                                     <div className="flex items-center gap-2">
-                                                        <TrendingDown className="w-4 h-4 text-rose-400" />
-                                                        <span className="text-sm font-semibold text-rose-400">{trade.direction}</span>
+                                                        {trade.direction === 'SELL' ? (
+                                                            <TrendingDown className="w-4 h-4 text-rose-400" />
+                                                        ) : (
+                                                            <TrendingUp className="w-4 h-4 text-emerald-400" />
+                                                        )}
+                                                        <span className={`text-sm font-semibold ${trade.direction === 'SELL' ? 'text-rose-400' : 'text-emerald-400'}`}>
+                                                            {trade.direction}
+                                                        </span>
                                                     </div>
                                                 </div>
 

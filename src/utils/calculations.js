@@ -324,14 +324,16 @@ export const calculateGridStrategy = (data, selectedSMA) => {
             let peakAdverseFromLastTrade = 0;
             let tradeEntryTime = null;
             let tradeEntryPrice = 0;
+            let tradeDirection = null; // 'BUY' or 'SELL'
 
             for (let i = 0; i < distortions.length; i++) {
                 const currentDist = distortions[i].val;
 
                 if (!inTrade) {
+                    // Check for SELL entry (positive distortion)
                     if (currentDist >= initialEntry) {
-                        // OPEN TRADE
                         inTrade = true;
+                        tradeDirection = 'SELL';
                         currentLayers = 1;
                         avgPrice = initialEntry;
                         peakAdverseTrade = 0;
@@ -339,64 +341,119 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                         tradeEntryTime = distortions[i].time;
                         tradeEntryPrice = initialEntry;
                     }
+                    // Check for BUY entry (negative distortion)
+                    else if (currentDist <= -initialEntry) {
+                        inTrade = true;
+                        tradeDirection = 'BUY';
+                        currentLayers = 1;
+                        avgPrice = -initialEntry;
+                        peakAdverseTrade = 0;
+                        peakAdverseFromLastTrade = 0;
+                        tradeEntryTime = distortions[i].time;
+                        tradeEntryPrice = -initialEntry;
+                    }
                 } else {
                     // MANAGE TRADE
+                    if (tradeDirection === 'SELL') {
+                        const lastGridLevel = initialEntry + (step * (currentLayers - 1));
 
-                    const lastGridLevel = initialEntry + (step * (currentLayers - 1));
+                        // 1. Check for Additions (Grid)
+                        const nextLevel = initialEntry + (step * currentLayers);
 
-                    // 1. Check for Additions (Grid)
-                    const nextLevel = initialEntry + (step * currentLayers);
+                        if (currentLayers < maxLayers && currentDist >= nextLevel) {
+                            // ADD LAYER
+                            currentLayers++;
+                            avgPrice = ((avgPrice * (currentLayers - 1)) + nextLevel) / currentLayers;
+                        }
 
-                    if (currentLayers < maxLayers && currentDist >= nextLevel) {
-                        // ADD LAYER
-                        currentLayers++;
-                        // New Avg = ((OldAvg * OldCount) + NewPrice) / CurrentCount
-                        // Assume fill at exactly nextLevel
-                        avgPrice = ((avgPrice * (currentLayers - 1)) + nextLevel) / currentLayers;
-                    }
+                        // 2. Track Drawdown
+                        const currentFloat = currentDist - avgPrice;
+                        if (currentFloat > peakAdverseTrade) peakAdverseTrade = currentFloat;
 
-                    // 2. Track Drawdown (Float)
-                    // Current Price (Distortion) - Avg Price
-                    const currentFloat = currentDist - avgPrice;
-                    if (currentFloat > peakAdverseTrade) peakAdverseTrade = currentFloat;
+                        // 3. Track Adverse from Last Grid
+                        const currentAdverseFromLast = currentDist - (initialEntry + (step * (currentLayers - 1)));
+                        if (currentAdverseFromLast > peakAdverseFromLastTrade) peakAdverseFromLastTrade = currentAdverseFromLast;
 
-                    // 3. Track Adverse from Last Grid (for Stop calculation)
-                    // How far did it go BEYOND the last addition?
-                    const currentAdverseFromLast = currentDist - (initialEntry + (step * (currentLayers - 1)));
-                    if (currentAdverseFromLast > peakAdverseFromLastTrade) peakAdverseFromLastTrade = currentAdverseFromLast;
+                        // 4. Check for Exit
+                        const targetExit = Math.max(0, avgPrice - targetProfitTicks);
 
-                    // 4. Check for Exit
-                    const targetExit = Math.max(0, avgPrice - targetProfitTicks);
+                        if (currentDist <= targetExit) {
+                            // CLOSE TRADE
+                            const profitPerShare = avgPrice - currentDist;
+                            const totalTradeProfit = profitPerShare * currentLayers;
 
-                    if (currentDist <= targetExit) {
-                        // CLOSE TRADE
-                        const profitPerShare = avgPrice - currentDist;
-                        const totalTradeProfit = profitPerShare * currentLayers;
+                            tradeHistory.push({
+                                entryTime: tradeEntryTime,
+                                exitTime: distortions[i].time,
+                                entryPrice: tradeEntryPrice,
+                                exitPrice: currentDist,
+                                avgPrice: avgPrice,
+                                layers: currentLayers,
+                                profit: totalTradeProfit,
+                                direction: 'SELL',
+                                drawdown: peakAdverseTrade
+                            });
 
-                        // Log trade to history
-                        tradeHistory.push({
-                            entryTime: tradeEntryTime,
-                            exitTime: distortions[i].time,
-                            entryPrice: tradeEntryPrice,
-                            exitPrice: currentDist,
-                            avgPrice: avgPrice,
-                            layers: currentLayers,
-                            profit: totalTradeProfit,
-                            direction: 'SELL',
-                            drawdown: peakAdverseTrade
-                        });
+                            totalProfit += totalTradeProfit;
+                            tradeCount++;
 
-                        totalProfit += totalTradeProfit;
-                        tradeCount++;
+                            if (peakAdverseTrade > maxDrawdown) maxDrawdown = peakAdverseTrade;
+                            if (peakAdverseFromLastTrade > maxAdverseFromLast) maxAdverseFromLast = peakAdverseFromLastTrade;
 
-                        // Update Maxes
-                        if (peakAdverseTrade > maxDrawdown) maxDrawdown = peakAdverseTrade;
-                        if (peakAdverseFromLastTrade > maxAdverseFromLast) maxAdverseFromLast = peakAdverseFromLastTrade;
+                            inTrade = false;
+                            currentLayers = 0;
+                            avgPrice = 0;
+                        }
+                    } else { // BUY
+                        const lastGridLevel = -initialEntry - (step * (currentLayers - 1));
 
-                        // Reset
-                        inTrade = false;
-                        currentLayers = 0;
-                        avgPrice = 0;
+                        // 1. Check for Additions (Grid)
+                        const nextLevel = -initialEntry - (step * currentLayers);
+
+                        if (currentLayers < maxLayers && currentDist <= nextLevel) {
+                            // ADD LAYER
+                            currentLayers++;
+                            avgPrice = ((avgPrice * (currentLayers - 1)) + nextLevel) / currentLayers;
+                        }
+
+                        // 2. Track Drawdown
+                        const currentFloat = avgPrice - currentDist;
+                        if (currentFloat > peakAdverseTrade) peakAdverseTrade = currentFloat;
+
+                        // 3. Track Adverse from Last Grid
+                        const currentAdverseFromLast = (-initialEntry - (step * (currentLayers - 1))) - currentDist;
+                        if (currentAdverseFromLast > peakAdverseFromLastTrade) peakAdverseFromLastTrade = currentAdverseFromLast;
+
+                        // 4. Check for Exit
+                        const targetExit = avgPrice + targetProfitTicks;
+
+                        if (currentDist >= targetExit) {
+                            // CLOSE TRADE
+                            const profitPerShare = currentDist - avgPrice;
+                            const totalTradeProfit = profitPerShare * currentLayers;
+
+                            tradeHistory.push({
+                                entryTime: tradeEntryTime,
+                                exitTime: distortions[i].time,
+                                entryPrice: tradeEntryPrice,
+                                exitPrice: currentDist,
+                                avgPrice: avgPrice,
+                                layers: currentLayers,
+                                profit: totalTradeProfit,
+                                direction: 'BUY',
+                                drawdown: peakAdverseTrade
+                            });
+
+                            totalProfit += totalTradeProfit;
+                            tradeCount++;
+
+                            if (peakAdverseTrade > maxDrawdown) maxDrawdown = peakAdverseTrade;
+                            if (peakAdverseFromLastTrade > maxAdverseFromLast) maxAdverseFromLast = peakAdverseFromLastTrade;
+
+                            inTrade = false;
+                            currentLayers = 0;
+                            avgPrice = 0;
+                        }
                     }
                 }
             }
@@ -584,13 +641,16 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                         let peakAdverseFromLastTrade = 0;
                         let tradeEntryTime = null;
                         let tradeEntryPrice = 0;
+                        let tradeDirection = null; // 'BUY' or 'SELL'
 
                         for (let i = 0; i < hourFilteredDistortions.length; i++) {
                             const currentDist = hourFilteredDistortions[i].val;
 
                             if (!inTrade) {
+                                // Check for SELL entry (positive distortion)
                                 if (currentDist >= initialEntry) {
                                     inTrade = true;
+                                    tradeDirection = 'SELL';
                                     currentLayers = 1;
                                     avgPrice = initialEntry;
                                     peakAdverseTrade = 0;
@@ -598,49 +658,104 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                                     tradeEntryTime = hourFilteredDistortions[i].time;
                                     tradeEntryPrice = initialEntry;
                                 }
-                            } else {
-                                const lastGridLevel = initialEntry + (step * (currentLayers - 1));
-                                const nextLevel = initialEntry + (step * currentLayers);
-
-                                if (currentLayers < maxLayers && currentDist >= nextLevel) {
-                                    currentLayers++;
-                                    avgPrice = ((avgPrice * (currentLayers - 1)) + nextLevel) / currentLayers;
+                                // Check for BUY entry (negative distortion)
+                                else if (currentDist <= -initialEntry) {
+                                    inTrade = true;
+                                    tradeDirection = 'BUY';
+                                    currentLayers = 1;
+                                    avgPrice = -initialEntry;
+                                    peakAdverseTrade = 0;
+                                    peakAdverseFromLastTrade = 0;
+                                    tradeEntryTime = hourFilteredDistortions[i].time;
+                                    tradeEntryPrice = -initialEntry;
                                 }
+                            } else {
+                                if (tradeDirection === 'SELL') {
+                                    const lastGridLevel = initialEntry + (step * (currentLayers - 1));
+                                    const nextLevel = initialEntry + (step * currentLayers);
 
-                                const currentFloat = currentDist - avgPrice;
-                                if (currentFloat > peakAdverseTrade) peakAdverseTrade = currentFloat;
+                                    if (currentLayers < maxLayers && currentDist >= nextLevel) {
+                                        currentLayers++;
+                                        avgPrice = ((avgPrice * (currentLayers - 1)) + nextLevel) / currentLayers;
+                                    }
 
-                                const currentAdverseFromLast = currentDist - (initialEntry + (step * (currentLayers - 1)));
-                                if (currentAdverseFromLast > peakAdverseFromLastTrade) peakAdverseFromLastTrade = currentAdverseFromLast;
+                                    const currentFloat = currentDist - avgPrice;
+                                    if (currentFloat > peakAdverseTrade) peakAdverseTrade = currentFloat;
 
-                                const targetExit = Math.max(0, avgPrice - targetProfitTicks);
+                                    const currentAdverseFromLast = currentDist - (initialEntry + (step * (currentLayers - 1)));
+                                    if (currentAdverseFromLast > peakAdverseFromLastTrade) peakAdverseFromLastTrade = currentAdverseFromLast;
 
-                                if (currentDist <= targetExit) {
-                                    const profitPerShare = avgPrice - currentDist;
-                                    const totalTradeProfit = profitPerShare * currentLayers;
+                                    const targetExit = Math.max(0, avgPrice - targetProfitTicks);
 
-                                    // Log trade to history
-                                    tradeHistory.push({
-                                        entryTime: tradeEntryTime,
-                                        exitTime: hourFilteredDistortions[i].time,
-                                        entryPrice: tradeEntryPrice,
-                                        exitPrice: currentDist,
-                                        avgPrice: avgPrice,
-                                        layers: currentLayers,
-                                        profit: totalTradeProfit,
-                                        direction: 'SELL',
-                                        drawdown: peakAdverseTrade
-                                    });
+                                    if (currentDist <= targetExit) {
+                                        const profitPerShare = avgPrice - currentDist;
+                                        const totalTradeProfit = profitPerShare * currentLayers;
 
-                                    totalProfit += totalTradeProfit;
-                                    tradeCount++;
+                                        tradeHistory.push({
+                                            entryTime: tradeEntryTime,
+                                            exitTime: hourFilteredDistortions[i].time,
+                                            entryPrice: tradeEntryPrice,
+                                            exitPrice: currentDist,
+                                            avgPrice: avgPrice,
+                                            layers: currentLayers,
+                                            profit: totalTradeProfit,
+                                            direction: 'SELL',
+                                            drawdown: peakAdverseTrade
+                                        });
 
-                                    if (peakAdverseTrade > maxDrawdown) maxDrawdown = peakAdverseTrade;
-                                    if (peakAdverseFromLastTrade > maxAdverseFromLast) maxAdverseFromLast = peakAdverseFromLastTrade;
+                                        totalProfit += totalTradeProfit;
+                                        tradeCount++;
 
-                                    inTrade = false;
-                                    currentLayers = 0;
-                                    avgPrice = 0;
+                                        if (peakAdverseTrade > maxDrawdown) maxDrawdown = peakAdverseTrade;
+                                        if (peakAdverseFromLastTrade > maxAdverseFromLast) maxAdverseFromLast = peakAdverseFromLastTrade;
+
+                                        inTrade = false;
+                                        currentLayers = 0;
+                                        avgPrice = 0;
+                                    }
+                                } else { // BUY
+                                    const lastGridLevel = -initialEntry - (step * (currentLayers - 1));
+                                    const nextLevel = -initialEntry - (step * currentLayers);
+
+                                    if (currentLayers < maxLayers && currentDist <= nextLevel) {
+                                        currentLayers++;
+                                        avgPrice = ((avgPrice * (currentLayers - 1)) + nextLevel) / currentLayers;
+                                    }
+
+                                    const currentFloat = avgPrice - currentDist;
+                                    if (currentFloat > peakAdverseTrade) peakAdverseTrade = currentFloat;
+
+                                    const currentAdverseFromLast = (-initialEntry - (step * (currentLayers - 1))) - currentDist;
+                                    if (currentAdverseFromLast > peakAdverseFromLastTrade) peakAdverseFromLastTrade = currentAdverseFromLast;
+
+                                    const targetExit = avgPrice + targetProfitTicks;
+
+                                    if (currentDist >= targetExit) {
+                                        const profitPerShare = currentDist - avgPrice;
+                                        const totalTradeProfit = profitPerShare * currentLayers;
+
+                                        tradeHistory.push({
+                                            entryTime: tradeEntryTime,
+                                            exitTime: hourFilteredDistortions[i].time,
+                                            entryPrice: tradeEntryPrice,
+                                            exitPrice: currentDist,
+                                            avgPrice: avgPrice,
+                                            layers: currentLayers,
+                                            profit: totalTradeProfit,
+                                            direction: 'BUY',
+                                            drawdown: peakAdverseTrade
+                                        });
+
+                                        totalProfit += totalTradeProfit;
+                                        tradeCount++;
+
+                                        if (peakAdverseTrade > maxDrawdown) maxDrawdown = peakAdverseTrade;
+                                        if (peakAdverseFromLastTrade > maxAdverseFromLast) maxAdverseFromLast = peakAdverseFromLastTrade;
+
+                                        inTrade = false;
+                                        currentLayers = 0;
+                                        avgPrice = 0;
+                                    }
                                 }
                             }
                         }
