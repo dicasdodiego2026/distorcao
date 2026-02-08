@@ -1,8 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, ScatterChart, Scatter, ReferenceLine } from 'recharts';
-import { FileUpload } from './FileUpload';
+import {
+    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+    BarChart, Bar, ScatterChart, Scatter, ZAxis
+} from 'recharts';
+import { Upload, FileText, AlertCircle, Activity, BarChart2, TrendingUp, Clock, CheckCircle } from 'lucide-react';
 import { parseLogData, calculateSMA, calculateDistortions, generateStats } from '../utils/calculations';
-import { AlertCircle, Activity, BarChart2, TrendingUp, Clock } from 'lucide-react';
+import { FileUpload } from './FileUpload';
 
 export function AnalysisDashboard() {
     const [data, setData] = useState([]);
@@ -14,7 +17,7 @@ export function AnalysisDashboard() {
         setLoading(true);
         setError(null);
 
-        // Use setTimeout to allow UI to render loading state
+        // Simulating heavy processing delay for better UX
         setTimeout(() => {
             try {
                 console.log("Iniciando processamento...");
@@ -41,226 +44,282 @@ export function AnalysisDashboard() {
         }, 100);
     };
 
-    const currentStats = useMemo(() => {
-        if (!data.length) return null;
-        return generateStats(data, selectedSMA);
-    }, [data, selectedSMA]);
+    const stats = useMemo(() => generateStats(data, selectedSMA), [data, selectedSMA]);
 
+    // Scatter plot data preparation: Correlation between Distortion (X) and Next Bar Return (Y)
     const scatterData = useMemo(() => {
         if (!data.length) return [];
         return data.map((d, i) => {
             if (i >= data.length - 1) return null;
             const nextBar = data[i + 1];
-            const distortion = d[`dist${selectedSMA}`];
-            if (distortion === null) return null;
-            const returnTicks = (nextBar.close - d.close) / d.tick_size;
+            const ret = (nextBar.close - d.close) / d.tick_size; // Return in ticks
             return {
-                x: Number(distortion.toFixed(0)),
-                y: Number(returnTicks.toFixed(0)),
-                fill: distortion > 0 ? '#ef4444' : '#22c55e',
+                distortion: d[`dist${selectedSMA}`],
+                nextReturn: ret,
                 timestamp: d.timestamp
             };
-        }).filter(Boolean);
+        }).filter(d => d && d.distortion !== null);
     }, [data, selectedSMA]);
 
-    if (!data.length) {
-        return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
-                <div className="max-w-3xl w-full space-y-8">
-                    <div className="text-center space-y-2">
-                        <div className="inline-block p-4 bg-blue-600 rounded-full shadow-lg mb-4">
-                            <Activity className="w-12 h-12 text-white" />
+    const CustomTooltip = ({ active, payload, label }) => {
+        if (active && payload && payload.length) {
+            return (
+                <div className="bg-slate-800 border border-slate-700 p-3 rounded shadow-xl text-xs">
+                    <p className="font-semibold text-slate-200 mb-1">{`Data: ${label}`}</p>
+                    {payload.map((entry, index) => (
+                        <div key={index} className="flex items-center gap-2 mb-1" style={{ color: entry.color }}>
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }}></span>
+                            <span>{`${entry.name}: ${entry.value.toFixed(2)}`}</span>
                         </div>
-                        <h1 className="text-4xl font-extrabold text-slate-800 tracking-tight">
-                            Análise de Distorção
-                        </h1>
-                        <p className="text-lg text-slate-500 max-w-lg mx-auto">
-                            Carregue seus logs de negociação para visualizar distorções de média móvel e identificar padrões de reversão.
-                        </p>
-                    </div>
-
-                    <div className="bg-white p-10 rounded-2xl shadow-xl border border-slate-100 backdrop-blur-sm bg-opacity-90">
-                        <FileUpload onDataLoaded={handleDataLoaded} />
-
-                        {loading && (
-                            <div className="mt-8 flex flex-col items-center animate-in fade-in duration-300">
-                                <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-                                <p className="text-blue-600 font-medium bg-blue-50 px-4 py-1 rounded-full text-sm">Processando dados...</p>
-                            </div>
-                        )}
-
-                        {error && (
-                            <div className="mt-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl flex items-start space-x-3 shadow-sm animate-in slide-in-from-bottom-2">
-                                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                                <div>
-                                    <h3 className="font-bold">Erro ao carregar dados</h3>
-                                    <p className="text-sm mt-1 opacity-90">{error}</p>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    <p className="text-center text-slate-400 text-sm">
-                        Suporta múltiplos arquivos JSON concatenados.
-                    </p>
+                    ))}
                 </div>
-            </div>
-        );
-    }
+            );
+        }
+        return null;
+    };
 
     return (
-        <div className="min-h-screen bg-slate-50 p-6">
-            <div className="max-w-7xl mx-auto space-y-6">
-
-                {/* Header */}
-                <div className="flex flex-col md:flex-row justify-between items-center bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-                    <div className="flex items-center space-x-3 mb-4 md:mb-0">
-                        <div className="bg-blue-600 p-2 rounded-lg">
+        <div className="bg-slate-950 min-h-screen text-slate-100 font-sans selection:bg-indigo-500 selection:text-white">
+            {/* Header */}
+            <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-20 shadow-lg backdrop-blur-md bg-opacity-80">
+                <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-indigo-600 p-2 rounded-lg shadow-indigo-500/20 shadow-lg">
                             <Activity className="w-6 h-6 text-white" />
                         </div>
-                        <h1 className="text-2xl font-bold text-slate-800">Dashboard de Análise</h1>
+                        <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
+                            Distorção Analytics
+                        </h1>
                     </div>
-
-                    <div className="flex bg-slate-100 p-1.5 rounded-xl">
-                        {[10, 25, 50].map(period => (
-                            <button
-                                key={period}
-                                onClick={() => setSelectedSMA(period)}
-                                className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${selectedSMA === period
-                                        ? 'bg-white shadow-md text-blue-600'
-                                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200'
-                                    }`}
-                            >
-                                SMA {period}
-                            </button>
-                        ))}
+                    <div className="text-sm text-slate-400 flex items-center gap-2">
+                        <Clock className="w-4 h-4" />
+                        <span>v1.2.0 • Dark Mode</span>
                     </div>
                 </div>
+            </header>
 
-                {/* Stats Grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Key Metrics */}
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 lg:col-span-1 flex flex-col justify-center">
-                        <h2 className="flex items-center text-lg font-semibold mb-6 text-slate-700">
-                            <BarChart2 className="w-5 h-5 mr-2 text-blue-500" />
-                            Métricas Gerais
-                        </h2>
-                        {currentStats && (
-                            <div className="space-y-4">
-                                <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                                    <span className="text-slate-500 text-sm">Dias Analisados</span>
-                                    <span className="font-mono font-bold text-slate-800">{new Set(data.map(d => d.timestamp.toDateString())).size}</span>
-                                </div>
-                                <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                                    <span className="text-slate-500 text-sm">Total Barras</span>
-                                    <span className="font-mono font-bold text-slate-800">{currentStats.count}</span>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="p-3 bg-green-50 rounded-lg border border-green-100">
-                                        <span className="block text-xs text-green-600 font-medium uppercase mb-1">Máx Positiva</span>
-                                        <span className="block font-mono font-bold text-green-700 text-xl">+{currentStats.max.toFixed(0)}t</span>
-                                    </div>
-                                    <div className="p-3 bg-red-50 rounded-lg border border-red-100">
-                                        <span className="block text-xs text-red-600 font-medium uppercase mb-1">Máx Negativa</span>
-                                        <span className="block font-mono font-bold text-red-700 text-xl">{currentStats.min.toFixed(0)}t</span>
-                                    </div>
-                                </div>
-                                <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg border-l-4 border-blue-500">
-                                    <span className="text-blue-700 text-sm font-medium">Média Absoluta</span>
-                                    <span className="font-mono font-bold text-blue-800">{currentStats.avgAbs.toFixed(1)} ticks</span>
-                                </div>
+            <main className="max-w-7xl mx-auto px-6 py-8 space-y-8">
+
+                {/* Upload Section */}
+                {!data.length && !loading && (
+                    <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6 animate-in fade-in zoom-in duration-500">
+                        <div className="text-center space-y-2">
+                            <h2 className="text-3xl font-bold text-white">Comece sua Análise</h2>
+                            <p className="text-slate-400 max-w-md mx-auto">
+                                Importe seus logs de negociação do NinjaTrader para descobrir padrões de distorção de preço.
+                            </p>
+                        </div>
+                        <div className="w-full max-w-2xl">
+                            <FileUpload onDataLoaded={handleDataLoaded} />
+                        </div>
+                        {error && (
+                            <div className="mt-4 p-4 bg-rose-950/50 border border-rose-900/50 rounded-lg text-rose-200 flex items-center gap-3 max-w-2xl w-full animate-in slide-in-from-top-2">
+                                <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                                <p>{error}</p>
                             </div>
                         )}
                     </div>
+                )}
 
-                    {/* Histogram */}
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 lg:col-span-2 min-h-[300px]">
-                        <h2 className="flex items-center text-lg font-semibold mb-4 text-slate-700">
-                            <BarChart2 className="w-5 h-5 mr-2 text-slate-400" />
-                            Distribuição de Frequência (Distorção em Ticks)
-                        </h2>
-                        <ResponsiveContainer width="100%" height={250}>
-                            <BarChart data={currentStats?.histogram || []}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                                <XAxis dataKey="bucket" tick={{ fill: '#64748b', fontSize: 12 }} />
-                                <YAxis tick={{ fill: '#64748b', fontSize: 12 }} />
-                                <Tooltip
-                                    cursor={{ fill: '#f1f5f9' }}
-                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                />
-                                <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Frequência" />
-                            </BarChart>
-                        </ResponsiveContainer>
+                {/* Loading State */}
+                {loading && (
+                    <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
+                        <div className="relative">
+                            <div className="w-16 h-16 border-4 border-slate-700 border-t-indigo-500 rounded-full animate-spin"></div>
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <Activity className="w-6 h-6 text-indigo-500 animate-pulse" />
+                            </div>
+                        </div>
+                        <p className="text-slate-400 font-medium animate-pulse">Processando milhões de ticks...</p>
                     </div>
-                </div>
+                )}
 
-                {/* Scatter Plot */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 h-[450px]">
-                    <h2 className="flex items-center text-lg font-semibold mb-2 text-slate-700">
-                        <TrendingUp className="w-5 h-5 mr-2 text-slate-400" />
-                        Correlação: Distorção vs Retorno Futuro
-                    </h2>
-                    <p className="text-sm text-slate-400 mb-4">
-                        Identifique se distorções extremas (Eixo X) tendem a reverter na próxima barra (Eixo Y).
-                    </p>
-                    <ResponsiveContainer width="100%" height="100%">
-                        <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                            <CartesianGrid stroke="#e2e8f0" />
-                            <XAxis type="number" dataKey="x" name="Distorção" unit="t" tick={{ fill: '#64748b' }} />
-                            <YAxis type="number" dataKey="y" name="Retorno" unit="t" tick={{ fill: '#64748b' }} />
-                            <Tooltip
-                                cursor={{ strokeDasharray: '3 3' }}
-                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                            />
-                            <ReferenceLine y={0} stroke="#94a3b8" />
-                            <ReferenceLine x={0} stroke="#94a3b8" />
-                            <Scatter name="Dados" data={scatterData} fill="#8884d8" shape="circle" />
-                        </ScatterChart>
-                    </ResponsiveContainer>
-                </div>
+                {/* Dashboard Content */}
+                {data.length > 0 && !loading && (
+                    <div className="space-y-8 animate-in run-in duration-500">
 
-                {/* Time Series */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 h-[450px]">
-                    <h2 className="flex items-center text-lg font-semibold mb-4 text-slate-700">
-                        <Clock className="w-5 h-5 mr-2 text-slate-400" />
-                        Série Temporal (Últimas 200 Barras)
-                    </h2>
-                    <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={data.slice(-200)}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                            <XAxis
-                                dataKey="timestamp"
-                                tickFormatter={(t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                tick={{ fill: '#64748b', fontSize: 12 }}
-                            />
-                            <YAxis domain={['auto', 'auto']} tick={{ fill: '#64748b', fontSize: 12 }} />
-                            <Tooltip
-                                labelFormatter={(t) => new Date(t).toLocaleString()}
-                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                            />
-                            <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                            <Line
-                                type="monotone"
-                                dataKey="close"
-                                stroke="#64748b"
-                                dot={false}
-                                strokeWidth={2}
-                                name="Preço"
-                                activeDot={{ r: 6 }}
-                            />
-                            <Line
-                                type="monotone"
-                                dataKey={`sma${selectedSMA}`}
-                                stroke="#3b82f6"
-                                dot={false}
-                                strokeWidth={2}
-                                name={`SMA ${selectedSMA}`}
-                                strokeDasharray="5 5"
-                            />
-                        </LineChart>
-                    </ResponsiveContainer>
-                </div>
-            </div>
+                        {/* Controls & Summary */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+
+                            {/* SMA Selector Card */}
+                            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl col-span-1 md:col-span-1">
+                                <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3 block">Período da SMA</label>
+                                <div className="flex gap-2">
+                                    {[10, 25, 50].map(val => (
+                                        <button
+                                            key={val}
+                                            onClick={() => setSelectedSMA(val)}
+                                            className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all duration-200 border ${selectedSMA === val
+                                                    ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
+                                                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
+                                                }`}
+                                        >
+                                            {val}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Stat Cards */}
+                            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl col-span-1 md:col-span-3 grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="space-y-1">
+                                    <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Barras Analisadas</span>
+                                    <div className="text-2xl font-bold text-white">{stats?.count || 0}</div>
+                                </div>
+                                <div className="space-y-1">
+                                    <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Distorção Média</span>
+                                    <div className="text-2xl font-bold text-emerald-400">{stats?.avgAbs.toFixed(2)} ticks</div>
+                                </div>
+                                <div className="space-y-1">
+                                    <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Máx. Positiva</span>
+                                    <div className="text-2xl font-bold text-indigo-400">+{stats?.max.toFixed(2)} ticks</div>
+                                </div>
+                                <div className="space-y-1">
+                                    <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Máx. Negativa</span>
+                                    <div className="text-2xl font-bold text-rose-400">{stats?.min.toFixed(2)} ticks</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Charts Section */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Histogram */}
+                            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl">
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                        <BarChart2 className="w-5 h-5 text-emerald-500" />
+                                        Distribuição de Frequência
+                                    </h3>
+                                </div>
+                                <div className="h-64">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={stats?.histogram || []}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                                            <XAxis
+                                                dataKey="bucket"
+                                                stroke="#64748b"
+                                                fontSize={12}
+                                                tickLine={false}
+                                                axisLine={false}
+                                            />
+                                            <YAxis
+                                                stroke="#64748b"
+                                                fontSize={12}
+                                                tickLine={false}
+                                                axisLine={false}
+                                            />
+                                            <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
+                                            <Bar dataKey="count" fill="#10b981" radius={[4, 4, 0, 0]} name="Ocorrências" />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+
+                            {/* Scatter Plot */}
+                            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl">
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                        <TrendingUp className="w-5 h-5 text-indigo-500" />
+                                        Reversão vs Distorção
+                                    </h3>
+                                </div>
+                                <div className="h-64">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                                            <XAxis
+                                                type="number"
+                                                dataKey="distortion"
+                                                name="Distorção Atual"
+                                                stroke="#64748b"
+                                                fontSize={12}
+                                                tickLine={false}
+                                                axisLine={false}
+                                            />
+                                            <YAxis
+                                                type="number"
+                                                dataKey="nextReturn"
+                                                name="Retorno Próx. Barra"
+                                                stroke="#64748b"
+                                                fontSize={12}
+                                                tickLine={false}
+                                                axisLine={false}
+                                            />
+                                            <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip />} />
+                                            <Scatter name="Observações" data={scatterData} fill="#818cf8" fillOpacity={0.6} />
+                                        </ScatterChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+
+                            {/* Time Series Chart (Full Width) */}
+                            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl lg:col-span-2">
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                        <Activity className="w-5 h-5 text-cyan-500" />
+                                        Preço vs SMA {selectedSMA}
+                                    </h3>
+                                </div>
+                                <div className="h-80">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <LineChart data={data.slice(-200)}> {/* Show last 200 bars for performance */}
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                                            <XAxis
+                                                dataKey="timestamp"
+                                                tickFormatter={(ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                stroke="#64748b"
+                                                fontSize={12}
+                                                tickLine={false}
+                                                axisLine={false}
+                                                minTickGap={30}
+                                            />
+                                            <YAxis
+                                                domain={['auto', 'auto']}
+                                                stroke="#64748b"
+                                                fontSize={12}
+                                                tickLine={false}
+                                                axisLine={false}
+                                            />
+                                            <Tooltip content={<CustomTooltip />} />
+                                            <Legend />
+                                            <Line
+                                                type="monotone"
+                                                dataKey="close"
+                                                stroke="#22d3ee"
+                                                dot={false}
+                                                strokeWidth={2}
+                                                name="Preço Fechamento"
+                                                activeDot={{ r: 6, strokeWidth: 0 }}
+                                            />
+                                            <Line
+                                                type="monotone"
+                                                dataKey={`sma${selectedSMA}`}
+                                                stroke="#a78bfa"
+                                                dot={false}
+                                                strokeWidth={2}
+                                                strokeDasharray="5 5"
+                                                name={`SMA ${selectedSMA}`}
+                                            />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* New File Button */}
+                        <div className="flex justify-center pt-8 pb-12">
+                            <button
+                                onClick={() => setData([])}
+                                className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm font-medium px-4 py-2 rounded-lg hover:bg-slate-800"
+                            >
+                                <Upload className="w-4 h-4" />
+                                Carregar novo arquivo
+                            </button>
+                        </div>
+
+                    </div>
+                )}
+            </main>
         </div>
     );
 }
