@@ -333,7 +333,7 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                         avgPrice = initialEntry;
                         peakAdverseTrade = 0;
                         peakAdverseFromLastTrade = 0;
-                        tradeEntryTime = hourFilteredDistortions[i].time;
+                        tradeEntryTime = distortions[i].time;
                         tradeEntryPrice = initialEntry;
                     }
                 } else {
