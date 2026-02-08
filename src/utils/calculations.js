@@ -286,9 +286,10 @@ export const calculateGridStrategy = (data, selectedSMA) => {
     if (!data || data.length === 0) return null;
 
     const distKey = `dist${selectedSMA}`;
+    // Map with Time preserved
     const distortions = data
         .filter(d => d[distKey] !== null)
-        .map(d => Math.abs(d[distKey]));
+        .map(d => ({ val: Math.abs(d[distKey]), time: d.timestamp }));
 
     if (distortions.length === 0) return null;
 
@@ -322,7 +323,7 @@ export const calculateGridStrategy = (data, selectedSMA) => {
             let peakAdverseFromLastTrade = 0;
 
             for (let i = 0; i < distortions.length; i++) {
-                const currentDist = distortions[i];
+                const currentDist = distortions[i].val;
 
                 if (!inTrade) {
                     if (currentDist >= initialEntry) {
@@ -405,5 +406,89 @@ export const calculateGridStrategy = (data, selectedSMA) => {
     });
 
     results.sort((a, b) => b.score - a.score);
-    return results[0]; // Return Best Configuration
+    const bestConfig = results[0];
+
+    if (!bestConfig) return null;
+
+    // --- TIME WINDOW ANALYSIS ---
+    // Re-run simulation with best config to map performance by Hour
+    const hourStats = {}; // { "09": { profit: 0, count: 0 } }
+
+    let inTrade = false;
+    let currentLayers = 0;
+    let avgPrice = 0;
+    let tradeStartTime = "";
+
+    for (let i = 0; i < distortions.length; i++) {
+        const currentDist = distortions[i].val;
+        const currentTime = distortions[i].time;
+
+        if (!inTrade) {
+            if (currentDist >= bestConfig.initialEntry) {
+                inTrade = true;
+                currentLayers = 1;
+                avgPrice = bestConfig.initialEntry;
+                tradeStartTime = currentTime;
+            }
+        } else {
+            const nextLevel = bestConfig.initialEntry + (bestConfig.step * currentLayers);
+            if (currentLayers < maxLayers && currentDist >= nextLevel) {
+                currentLayers++;
+                avgPrice = ((avgPrice * (currentLayers - 1)) + nextLevel) / currentLayers;
+            }
+
+            const targetExit = Math.max(0, avgPrice - targetProfitTicks);
+            if (currentDist <= targetExit) {
+                // Trade Closed
+                // Log result to the hour of Start Time
+                // currentTime format "HH:mm:ss" or Date object?
+                // Assuming format "2024-01-01T09:00..." or similar standard. 
+                // Let's check `parseLogData` in view_file 953: `timestamp: new Date(ts)` 
+                // Wait, mapBarData creates a Date object.
+                // But my `distortions` array mapped `d.time`.
+                // In `calculateDistortions`, I return `...bar`. Let's check `aggregateByTime`.
+                // `aggregateByTime` uses `bar.timestamp`.
+                // `calculateDistortions` returns `...bar`.
+                // So `d.time` might not exist on the object unless `bar` had it.
+                // `mapBarData` creates `timestamp` (Date object). It does NOT create a `time` string property.
+                // So `d.time` in line 285 replacement was likely WRONG if `d` comes from `calculateDistortions`.
+                // `calculateDistortions` returns objects with `timestamp`.
+                // I need to fix my map above first, to use `d.timestamp` instead of `d.time`.
+                // And here use `d.timestamp`.
+
+                // Let's assume I fix the map in next step.
+                // Here I will use .timestamp (Date object)
+
+                const date = new Date(tradeStartTime);
+                const hour = date.getHours(); // 0-23 (number)
+
+                if (!hourStats[hour]) hourStats[hour] = { profit: 0, count: 0 };
+
+                const profitPerShare = avgPrice - currentDist;
+                const totalTradeProfit = profitPerShare * currentLayers;
+
+                hourStats[hour].profit += totalTradeProfit;
+                hourStats[hour].count += 1;
+
+                inTrade = false;
+                currentLayers = 0;
+            }
+        }
+    }
+
+    // Find Best Window
+    // Simple logic: Best single hour for now
+    let bestWindow = { label: "Dia Todo" };
+    const hours = Object.keys(hourStats).filter(h => hourStats[h].profit > 0);
+
+    if (hours.length > 0) {
+        hours.sort((a, b) => hourStats[b].profit - hourStats[a].profit); // Highest Profit First
+        const bestHour = parseInt(hours[0]);
+        const endHour = bestHour + 1;
+
+        const formatH = (h) => h < 10 ? `0${h}` : `${h}`;
+        bestWindow = { label: `${formatH(bestHour)}:00 às ${formatH(endHour)}:00` };
+    }
+
+    return { ...bestConfig, bestTimeWindow: bestWindow.label };
 };

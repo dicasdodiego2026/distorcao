@@ -570,7 +570,7 @@ export function AnalysisDashboard() {
                                         </div>
                                     </div>
 
-                                    <div className="mt-8 flex flex-col sm:flex-row gap-4 pt-6 border-t border-white/5 text-sm text-slate-300">
+                                    <div className="mt-8 flex flex-col sm:flex-row gap-4 pt-6 border-t border-white/5 text-sm text-slate-300 flex-wrap">
                                         <div className="flex items-center gap-2">
                                             <Target className="w-4 h-4 text-emerald-400" />
                                             <span><strong>Alvo Dinâmico:</strong> Saia no Preço Médio + 5 ticks de lucro.</span>
@@ -579,6 +579,11 @@ export function AnalysisDashboard() {
                                         <div className="flex items-center gap-2">
                                             <Shield className="w-4 h-4 text-rose-400" />
                                             <span><strong>Drawdown Máx:</strong> {gridStrategy.maxDrawdown.toFixed(0)} ticks (sobre o Médio).</span>
+                                        </div>
+                                        <div className="hidden sm:block text-slate-700">|</div>
+                                        <div className="flex items-center gap-2">
+                                            <Clock className="w-4 h-4 text-amber-400" />
+                                            <span><strong>Melhor Horário:</strong> {gridStrategy.bestTimeWindow}</span>
                                         </div>
                                     </div>
                                 </div>
