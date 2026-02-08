@@ -64,48 +64,60 @@ export function AnalysisDashboard() {
     }, [data, selectedSMA]);
 
     const CustomTooltip = ({ active, payload, label }) => {
-        // Strict safety checks to prevent crashes
-        if (!active || !payload || !payload.length || !payload[0] || !payload[0].payload) {
-            return null;
-        }
+        if (!active || !payload || !payload.length || !payload[0]) return null;
 
-        const dataPoint = payload[0].payload;
+        const data = payload[0].payload;
 
-        // Ensure all required properties exist before rendering
-        if (typeof dataPoint.distortion !== 'number' || typeof dataPoint.nextReturn !== 'number') {
-            return null;
-        }
-
-        return (
-            <div className="bg-slate-800 border border-slate-700 p-4 rounded-xl shadow-2xl text-xs max-w-xs z-50">
-                <p className="font-bold text-slate-200 mb-2 border-b border-slate-700 pb-2">
-                    {dataPoint.timestamp ? new Date(dataPoint.timestamp).toLocaleString() : 'Data desconhecida'}
-                </p>
-
-                <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                        <span className="text-slate-400">Distorção:</span>
-                        <span className="font-mono text-indigo-400 font-bold">
-                            {dataPoint.distortion.toFixed(2)} ticks
-                        </span>
-                    </div>
-
-                    <div className="flex justify-between items-center">
-                        <span className="text-slate-400">Retorno:</span>
-                        <span className={`font-mono font-bold ${dataPoint.nextReturn > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {dataPoint.nextReturn > 0 ? '+' : ''}{dataPoint.nextReturn.toFixed(2)} ticks
-                        </span>
-                    </div>
-
-                    <div className="mt-2 pt-2 border-t border-slate-700">
-                        <span className={`block text-center font-bold px-2 py-1 rounded ${dataPoint.status && dataPoint.status.includes('Reversão') ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
-                            {dataPoint.status || 'Indefinido'}
-                        </span>
+        // 1. Intraday Seasonality Chart (has avgDistortion)
+        if (data.avgDistortion !== undefined) {
+            return (
+                <div className="bg-slate-800 border border-slate-700 p-3 rounded shadow-xl text-xs z-50">
+                    <p className="font-bold text-slate-200 mb-2 border-b border-slate-700 pb-1">
+                        {`Horário: ${data.time}`}
+                    </p>
+                    <div className="space-y-1">
+                        <p className="text-slate-300">
+                            Média: <strong className="text-indigo-400">{data.avgDistortion.toFixed(2)} ticks</strong>
+                        </p>
+                        <p className="text-slate-300">
+                            Máxima: <strong className="text-rose-400">{data.maxDistortion.toFixed(2)} ticks</strong>
+                        </p>
+                        <p className="text-slate-400 text-[10px]">
+                            Amostras: {data.count}
+                        </p>
                     </div>
                 </div>
+            );
+        }
+
+        // 2. Histogram (has bucket)
+        if (data.bucket !== undefined) {
+            return (
+                <div className="bg-slate-800 border border-slate-700 p-3 rounded shadow-xl text-xs z-50">
+                    <p className="font-semibold text-slate-200 mb-1">{`Distorção: ${data.bucket} ticks`}</p>
+                    <p className="text-emerald-400">{`Ocorrências: ${data.count}`}</p>
+                </div>
+            );
+        }
+
+        // 3. Price/Time Series Chart (has close or timestamp)
+        return (
+            <div className="bg-slate-800 border border-slate-700 p-3 rounded shadow-xl text-xs z-50">
+                <p className="font-bold text-slate-200 mb-2 border-b border-slate-700 pb-1">
+                    {data.timestamp ? new Date(data.timestamp).toLocaleString() : label}
+                </p>
+                {payload.map((entry, index) => (
+                    <div key={index} className="flex items-center gap-2 mb-1">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }}></span>
+                        <span className="text-slate-300">
+                            {entry.name}: <strong style={{ color: entry.color }}>{typeof entry.value === 'number' ? entry.value.toFixed(2) : entry.value}</strong>
+                        </span>
+                    </div>
+                ))}
             </div>
         );
     };
+
 
 
     return (
