@@ -1,6 +1,11 @@
 
 export const parseLogData = (fileContent) => {
     if (!fileContent) return [];
+
+    // Pre-process: Fix locale issues (comma decimals) -> "123,45" to "123.45"
+    // valid JSON numbers cannot have commas.
+    const processedContent = fileContent.replace(/(\d+),(\d+)/g, '$1.$2');
+
     const bars = [];
     let braceCount = 0;
     let startIndex = -1;
@@ -9,7 +14,7 @@ export const parseLogData = (fileContent) => {
 
     // Pre-process: sometimes files have weird characters or are just array of objects without comma
     // If it starts with [, it might be a valid JSON array
-    const trimmed = fileContent.trim();
+    const trimmed = processedContent.trim();
     if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
         try {
             const validJson = JSON.parse(trimmed);
@@ -20,8 +25,8 @@ export const parseLogData = (fileContent) => {
     }
 
     // Stream parser for concatenated JSON objects
-    for (let i = 0; i < fileContent.length; i++) {
-        const char = fileContent[i];
+    for (let i = 0; i < processedContent.length; i++) {
+        const char = processedContent[i];
 
         if (inString) {
             if (escape) {
@@ -45,7 +50,7 @@ export const parseLogData = (fileContent) => {
         } else if (char === '}') {
             braceCount--;
             if (braceCount === 0 && startIndex !== -1) {
-                const jsonStr = fileContent.substring(startIndex, i + 1);
+                const jsonStr = processedContent.substring(startIndex, i + 1);
                 try {
                     const data = JSON.parse(jsonStr);
                     const mapped = mapBarData(data);
