@@ -3,9 +3,21 @@ import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
     BarChart, Bar, ScatterChart, Scatter, ZAxis
 } from 'recharts';
-import { Upload, FileText, AlertCircle, Activity, BarChart2, TrendingUp, Clock, CheckCircle } from 'lucide-react';
+import { Upload, FileText, AlertCircle, Activity, BarChart2, TrendingUp, Clock, CheckCircle, Lightbulb, BookOpen } from 'lucide-react';
 import { parseLogData, calculateSMA, calculateDistortions, generateStats } from '../utils/calculations';
 import { FileUpload } from './FileUpload';
+
+const InsightCard = ({ title, icon: Icon, children }) => (
+    <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 mt-4">
+        <div className="flex items-center gap-2 mb-2 text-indigo-400 font-semibold text-sm uppercase tracking-wider">
+            <Icon className="w-4 h-4" />
+            <span>{title}</span>
+        </div>
+        <div className="text-slate-400 text-sm leading-relaxed">
+            {children}
+        </div>
+    </div>
+);
 
 export function AnalysisDashboard() {
     const [data, setData] = useState([]);
@@ -150,8 +162,8 @@ export function AnalysisDashboard() {
                                             key={val}
                                             onClick={() => setSelectedSMA(val)}
                                             className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all duration-200 border ${selectedSMA === val
-                                                    ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
-                                                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
+                                                ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
+                                                : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
                                                 }`}
                                         >
                                             {val}
@@ -179,6 +191,14 @@ export function AnalysisDashboard() {
                                     <div className="text-2xl font-bold text-rose-400">{stats?.min.toFixed(2)} ticks</div>
                                 </div>
                             </div>
+                            <InsightCard title="Como usar esses dados" icon={BookOpen}>
+                                <p>
+                                    <strong className="text-emerald-400">Distorção Média:</strong> Use este valor como base para seu <strong>Take Profit</strong>. Se a média é 10 ticks, buscar 20 ticks pode ser arriscado.
+                                </p>
+                                <p className="mt-2">
+                                    <strong className="text-rose-400">Máximas:</strong> Indicam pontos extremos. Se o preço atingir a Máx. Positiva (+{stats?.max.toFixed(0)}), a probabilidade de um pullback (retorno) aumenta drasticamente.
+                                </p>
+                            </InsightCard>
                         </div>
 
                         {/* Charts Section */}
@@ -213,6 +233,11 @@ export function AnalysisDashboard() {
                                         </BarChart>
                                     </ResponsiveContainer>
                                 </div>
+                                <InsightCard title="Setup de Exaustão" icon={Lightbulb}>
+                                    A "cauda" do gráfico (barras pequenas nas pontas) mostra onde o preço raramente vai.
+                                    <br />
+                                    <strong>Estratégia:</strong> Coloque ordens de <em>Reversão</em> nas faixas de preço onde a barra é quase invisível. Isso indica que o preço "esticou demais" e tende a voltar para a média (centro).
+                                </InsightCard>
                             </div>
 
                             {/* Scatter Plot */}
@@ -250,6 +275,13 @@ export function AnalysisDashboard() {
                                         </ScatterChart>
                                     </ResponsiveContainer>
                                 </div>
+                                <InsightCard title="Validação de Elasticidade" icon={Activity}>
+                                    Este gráfico prova se o "efeito elástico" funciona.
+                                    <ul className="list-disc pl-4 mt-1 space-y-1">
+                                        <li>Pontos no <strong>Topo-Esquerdo</strong> ou <strong>Fundo-Direito</strong> indicam que quando o preço estica, ele volta (setup conservador).</li>
+                                        <li>Se os pontos seguem uma linha reta, cuidado: o mercado está em tendência forte e não vai voltar!</li>
+                                    </ul>
+                                </InsightCard>
                             </div>
 
                             {/* Time Series Chart (Full Width) */}
@@ -303,6 +335,13 @@ export function AnalysisDashboard() {
                                         </LineChart>
                                     </ResponsiveContainer>
                                 </div>
+                                <InsightCard title="Identificando Regimes de Mercado" icon={TrendingUp}>
+                                    Observe a linha roxa (SMA).
+                                    <br />
+                                    Se ela estiver <strong>Plana</strong>, setups de Distorção funcionam melhor (compre baixo, venda alto).
+                                    <br />
+                                    Se ela estiver <strong>Inclinada</strong>, opere apenas a favor da inclinação (pullbacks).
+                                </InsightCard>
                             </div>
                         </div>
 
