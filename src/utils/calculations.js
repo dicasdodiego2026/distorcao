@@ -313,14 +313,14 @@ export const calculateGridStrategy = (data, selectedSMA) => {
             let totalProfit = 0;
             let maxDrawdown = 0; // relative to Avg Price
             let maxAdverseFromLast = 0; // relative to Last Grid Level
-            let tradeCount = 0;
+            let tradeCount = 0;`r`n                        let tradeHistory = []; // Track individual trades
 
             // Simulation State
             let inTrade = false;
             let currentLayers = 0;
             let avgPrice = 0;
             let peakAdverseTrade = 0;
-            let peakAdverseFromLastTrade = 0;
+            let peakAdverseFromLastTrade = 0;`r`n                        let tradeEntryTime = null;`r`n                        let tradeEntryPrice = 0;
 
             for (let i = 0; i < distortions.length; i++) {
                 const currentDist = distortions[i].val;
@@ -332,7 +332,9 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                         currentLayers = 1;
                         avgPrice = initialEntry;
                         peakAdverseTrade = 0;
-                        peakAdverseFromLastTrade = 0;
+                                    peakAdverseFromLastTrade = 0;
+                                    tradeEntryTime = hourFilteredDistortions[i].time;
+                                    tradeEntryPrice = initialEntry;
                     }
                 } else {
                     // MANAGE TRADE
@@ -368,7 +370,20 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                         const profitPerShare = avgPrice - currentDist;
                         const totalTradeProfit = profitPerShare * currentLayers;
 
-                        totalProfit += totalTradeProfit;
+                                    // Log trade to history
+                                    tradeHistory.push({
+                                        entryTime: tradeEntryTime,
+                                        exitTime: hourFilteredDistortions[i].time,
+                                        entryPrice: tradeEntryPrice,
+                                        exitPrice: currentDist,
+                                        avgPrice: avgPrice,
+                                        layers: currentLayers,
+                                        profit: totalTradeProfit,
+                                        direction: 'SELL',
+                                        drawdown: peakAdverseTrade
+                                    });
+
+                                    totalProfit += totalTradeProfit;
                         tradeCount++;
 
                         // Update Maxes
@@ -555,13 +570,13 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                         let totalProfit = 0;
                         let maxDrawdown = 0;
                         let maxAdverseFromLast = 0;
-                        let tradeCount = 0;
+                        let tradeCount = 0;`r`n                        let tradeHistory = []; // Track individual trades
 
                         let inTrade = false;
                         let currentLayers = 0;
                         let avgPrice = 0;
                         let peakAdverseTrade = 0;
-                        let peakAdverseFromLastTrade = 0;
+                        let peakAdverseFromLastTrade = 0;`r`n                        let tradeEntryTime = null;`r`n                        let tradeEntryPrice = 0;
 
                         for (let i = 0; i < hourFilteredDistortions.length; i++) {
                             const currentDist = hourFilteredDistortions[i].val;
@@ -573,6 +588,8 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                                     avgPrice = initialEntry;
                                     peakAdverseTrade = 0;
                                     peakAdverseFromLastTrade = 0;
+                                    tradeEntryTime = hourFilteredDistortions[i].time;
+                                    tradeEntryPrice = initialEntry;
                                 }
                             } else {
                                 const lastGridLevel = initialEntry + (step * (currentLayers - 1));
@@ -594,6 +611,19 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                                 if (currentDist <= targetExit) {
                                     const profitPerShare = avgPrice - currentDist;
                                     const totalTradeProfit = profitPerShare * currentLayers;
+
+                                    // Log trade to history
+                                    tradeHistory.push({
+                                        entryTime: tradeEntryTime,
+                                        exitTime: hourFilteredDistortions[i].time,
+                                        entryPrice: tradeEntryPrice,
+                                        exitPrice: currentDist,
+                                        avgPrice: avgPrice,
+                                        layers: currentLayers,
+                                        profit: totalTradeProfit,
+                                        direction: 'SELL',
+                                        drawdown: peakAdverseTrade
+                                    });
 
                                     totalProfit += totalTradeProfit;
                                     tradeCount++;
@@ -621,7 +651,8 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                                 stopFromLastGrid: recommendedStopFromLast,
                                 tradeCount,
                                 score,
-                                targetProfitTicks
+                                targetProfitTicks,
+                                tradeHistory: tradeHistory
                             });
                         }
                     });

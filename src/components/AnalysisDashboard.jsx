@@ -6,6 +6,7 @@ import {
 import { Upload, FileText, AlertCircle, Activity, BarChart2, TrendingUp, Clock, CheckCircle, Lightbulb, BookOpen, Target, Shield, Zap, Layers } from 'lucide-react';
 import { parseLogData, calculateSMA, calculateDistortions, generateStats, aggregateByTime, findOptimalStrategy, calculateGridStrategy } from '../utils/calculations';
 import { FileUpload } from './FileUpload';
+import { TradeHistoryModal } from './TradeHistoryModal';
 
 const InsightCard = ({ title, icon: Icon, children }) => (
     <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 mt-4">
@@ -24,6 +25,7 @@ export function AnalysisDashboard() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [selectedSMA, setSelectedSMA] = useState(10); // 10, 25, 50
+    const [showTradeHistory, setShowTradeHistory] = useState(false);
 
     const handleDataLoaded = (content) => {
         setLoading(true);
@@ -661,10 +663,14 @@ export function AnalysisDashboard() {
                                     </div>
 
                                     <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <div className="bg-slate-950/30 p-4 rounded-lg border border-slate-700/30">
+                                        <div
+                                            className="bg-slate-950/30 p-4 rounded-lg border border-slate-700/30 cursor-pointer hover:border-emerald-500/50 hover:bg-slate-900/50 transition-all group"
+                                            onClick={() => setShowTradeHistory(true)}
+                                        >
                                             <div className="flex items-center gap-2 mb-1">
-                                                <TrendingUp className="w-4 h-4 text-emerald-400" />
+                                                <TrendingUp className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
                                                 <span className="text-xs text-slate-400 uppercase tracking-wider">Lucro Simulado</span>
+                                                <span className="text-xs text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity ml-auto">Clique para detalhes →</span>
                                             </div>
                                             <div className="text-2xl font-bold text-emerald-400">+{gridStrategy.timeSpecificStrategy.totalProfit.toFixed(0)} ticks</div>
                                             <p className="text-xs text-slate-500 mt-1">Em {gridStrategy.timeSpecificStrategy.tradeCount} operações neste horário</p>
@@ -706,6 +712,16 @@ export function AnalysisDashboard() {
                     </div>
                 )}
             </main>
+
+            {/* Trade History Modal */}
+            {gridStrategy && gridStrategy.timeSpecificStrategy && gridStrategy.timeSpecificStrategy.tradeHistory && (
+                <TradeHistoryModal
+                    isOpen={showTradeHistory}
+                    onClose={() => setShowTradeHistory(false)}
+                    tradeHistory={gridStrategy.timeSpecificStrategy.tradeHistory}
+                    timeWindow={gridStrategy.bestTimeWindow}
+                />
+            )}
         </div>
     );
 }
