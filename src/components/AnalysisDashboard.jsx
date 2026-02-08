@@ -548,13 +548,13 @@ export function AnalysisDashboard() {
                                         </div>
 
                                         <div className="bg-slate-950/50 p-6 rounded-xl border border-rose-500/10 hover:border-rose-500/30 transition-colors group">
-                                            <span className="text-xs font-bold text-rose-300 uppercase tracking-wider mb-2 block group-hover:text-rose-200 transition-colors">Risco (Drawdown)</span>
+                                            <span className="text-xs font-bold text-rose-300 uppercase tracking-wider mb-2 block group-hover:text-rose-200 transition-colors">Proteção (Stop)</span>
                                             <div className="text-4xl font-black text-rose-400 tracking-tight flex items-baseline gap-1">
-                                                {gridStrategy.maxDrawdown.toFixed(0)}
+                                                {gridStrategy.stopFromLastGrid}
                                                 <span className="text-lg text-slate-500 font-medium">ticks</span>
                                             </div>
                                             <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                                                Máxima exposição negativa simulada. Seu Stop Loss deve ser maior que isso.
+                                                Coloque o Stop Loss {gridStrategy.stopFromLastGrid} ticks abaixo da sua última compra/venda.
                                             </p>
                                         </div>
 
@@ -578,7 +578,7 @@ export function AnalysisDashboard() {
                                         <div className="hidden sm:block text-slate-700">|</div>
                                         <div className="flex items-center gap-2">
                                             <Shield className="w-4 h-4 text-rose-400" />
-                                            <span><strong>Proteção:</strong> Nunca exceda 3 adições de lote.</span>
+                                            <span><strong>Drawdown Máx:</strong> {gridStrategy.maxDrawdown.toFixed(0)} ticks (sobre o Médio).</span>
                                         </div>
                                     </div>
                                 </div>

@@ -310,14 +310,16 @@ export const calculateGridStrategy = (data, selectedSMA) => {
     entries.forEach(initialEntry => {
         steps.forEach(step => {
             let totalProfit = 0;
-            let maxDrawdown = 0; // Max negative float
+            let maxDrawdown = 0; // relative to Avg Price
+            let maxAdverseFromLast = 0; // relative to Last Grid Level
             let tradeCount = 0;
 
             // Simulation State
             let inTrade = false;
             let currentLayers = 0;
             let avgPrice = 0;
-            let peakAdverse = 0; // How far price went against AvgPrice
+            let peakAdverseTrade = 0;
+            let peakAdverseFromLastTrade = 0;
 
             for (let i = 0; i < distortions.length; i++) {
                 const currentDist = distortions[i];
@@ -327,43 +329,50 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                         // OPEN TRADE
                         inTrade = true;
                         currentLayers = 1;
-                        avgPrice = initialEntry; // Simplified assumption: we entered exactly at threshold
-                        peakAdverse = 0;
+                        avgPrice = initialEntry;
+                        peakAdverseTrade = 0;
+                        peakAdverseFromLastTrade = 0;
                     }
                 } else {
                     // MANAGE TRADE
 
+                    const lastGridLevel = initialEntry + (step * (currentLayers - 1));
+
                     // 1. Check for Additions (Grid)
-                    // If we are below max layers and price moved against us by Step
-                    // With Distortion, "Against" means it went HIGHER than our entry
                     const nextLevel = initialEntry + (step * currentLayers);
 
                     if (currentLayers < maxLayers && currentDist >= nextLevel) {
                         // ADD LAYER
-                        // New Avg = ((OldAvg * OldCount) + NewPrice) / NewCount
-                        // We assume we fill exactly at the level (nextLevel)
-                        avgPrice = ((avgPrice * currentLayers) + nextLevel) / (currentLayers + 1);
                         currentLayers++;
+                        // New Avg = ((OldAvg * OldCount) + NewPrice) / CurrentCount
+                        // Assume fill at exactly nextLevel
+                        avgPrice = ((avgPrice * (currentLayers - 1)) + nextLevel) / currentLayers;
                     }
 
                     // 2. Track Drawdown (Float)
                     // Current Price (Distortion) - Avg Price
                     const currentFloat = currentDist - avgPrice;
-                    if (currentFloat > peakAdverse) peakAdverse = currentFloat;
+                    if (currentFloat > peakAdverseTrade) peakAdverseTrade = currentFloat;
 
-                    // 3. Check for Exit
-                    // Short Condition: Distortion drops below Target
-                    // Target = AvgPrice - ProfitTicks
-                    // Or if it reverts to 0 (Mean), that's always a win
+                    // 3. Track Adverse from Last Grid (for Stop calculation)
+                    // How far did it go BEYOND the last addition?
+                    const currentAdverseFromLast = currentDist - (initialEntry + (step * (currentLayers - 1)));
+                    if (currentAdverseFromLast > peakAdverseFromLastTrade) peakAdverseFromLastTrade = currentAdverseFromLast;
+
+                    // 4. Check for Exit
                     const targetExit = Math.max(0, avgPrice - targetProfitTicks);
 
                     if (currentDist <= targetExit) {
                         // CLOSE TRADE
-                        const profitPerShare = avgPrice - currentDist; // should be approx targetProfitTicks
+                        const profitPerShare = avgPrice - currentDist;
                         const totalTradeProfit = profitPerShare * currentLayers;
 
                         totalProfit += totalTradeProfit;
                         tradeCount++;
+
+                        // Update Maxes
+                        if (peakAdverseTrade > maxDrawdown) maxDrawdown = peakAdverseTrade;
+                        if (peakAdverseFromLastTrade > maxAdverseFromLast) maxAdverseFromLast = peakAdverseFromLastTrade;
 
                         // Reset
                         inTrade = false;
@@ -374,17 +383,20 @@ export const calculateGridStrategy = (data, selectedSMA) => {
             }
 
             if (tradeCount > 3) {
-                // Score = Profit / MaxDrawdown (Calmar-ish ratio)
-                // Avoid division by zero
-                const score = totalProfit / (peakAdverse || 1);
+                // Score = Profit / MaxDrawdown
+                const score = totalProfit / (maxDrawdown || 1);
+
+                // Recommended Stop: MaxAdverseFromLast + Buffer (e.g. 5 ticks)
+                const recommendedStopFromLast = Math.ceil(maxAdverseFromLast + 5);
 
                 results.push({
                     initialEntry,
                     step,
                     maxLayers,
-                    avgPrice, // purely indicative of last state
+                    avgPrice,
                     totalProfit,
-                    maxDrawdown: peakAdverse,
+                    maxDrawdown, // from AvgPrice
+                    stopFromLastGrid: recommendedStopFromLast, // relative to last entry
                     tradeCount,
                     score
                 });
