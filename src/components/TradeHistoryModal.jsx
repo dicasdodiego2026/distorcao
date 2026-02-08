@@ -42,6 +42,10 @@ export const TradeHistoryModal = ({ isOpen, onClose, tradeHistory, timeWindow })
                             Histórico de Operações - {timeWindow}
                         </h2>
                         <p className="text-indigo-100 text-sm mt-1">Backtest simulado com parâmetros otimizados</p>
+                        <div className="mt-2 inline-flex items-center gap-2 bg-indigo-950/50 border border-indigo-400/30 rounded px-3 py-1 text-xs text-indigo-200">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                            Modo Conservador: Lucro calculado na saída exata do alvo (sem slippage positivo)
+                        </div>
                     </div>
                     <button
                         onClick={onClose}

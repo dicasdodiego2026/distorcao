@@ -373,7 +373,7 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                         peakAdverseFromLastTrade = 0;
                         tradeEntryTime = distortions[i].time;
                         tradeEntryPrice = -entryVal;
-                        console.log(`BUY Entry TRIGGERED: dist=${distVal}, entry=${-entryVal}, time=${distortions[i].time}`);
+                        // console.log(`BUY Entry TRIGGERED: dist=${distVal}, entry=${-entryVal}, time=${distortions[i].time}`);
                     }
                 } else {
                     // MANAGE TRADE
@@ -399,15 +399,15 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                         const targetExit = Math.max(0, avgPrice - targetProfitTicks);
 
                         if (distVal <= targetExit) {
-                            // CLOSE TRADE
-                            const profitPerShare = avgPrice - distVal;
+                            // CLOSE TRADE (Conservative: Exit at Target)
+                            const profitPerShare = avgPrice - targetExit;
                             const totalTradeProfit = profitPerShare * currentLayers;
 
                             tradeHistory.push({
                                 entryTime: tradeEntryTime,
                                 exitTime: distortions[i].time,
                                 entryPrice: tradeEntryPrice,
-                                exitPrice: distVal,
+                                exitPrice: targetExit, // Realized at Target
                                 avgPrice: avgPrice,
                                 layers: currentLayers,
                                 profit: totalTradeProfit,
@@ -447,15 +447,15 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                         const targetExit = avgPrice + targetProfitTicks; // Exit is higher than avgPrice
 
                         if (distVal >= targetExit) {
-                            // CLOSE TRADE
-                            const profitPerShare = distVal - avgPrice;
+                            // CLOSE TRADE (Conservative: Exit at Target)
+                            const profitPerShare = targetExit - avgPrice;
                             const totalTradeProfit = profitPerShare * currentLayers;
 
                             tradeHistory.push({
                                 entryTime: tradeEntryTime,
                                 exitTime: distortions[i].time,
                                 entryPrice: tradeEntryPrice,
-                                exitPrice: distVal,
+                                exitPrice: targetExit, // Realized at Target
                                 avgPrice: avgPrice,
                                 layers: currentLayers,
                                 profit: totalTradeProfit,
@@ -718,14 +718,15 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                                     const targetExit = Math.max(0, avgPrice - targetProfitTicks);
 
                                     if (distVal <= targetExit) {
-                                        const profitPerShare = avgPrice - distVal;
+                                        // Conservative: Exit at Target
+                                        const profitPerShare = avgPrice - targetExit;
                                         const totalTradeProfit = profitPerShare * currentLayers;
 
                                         tradeHistory.push({
                                             entryTime: tradeEntryTime,
                                             exitTime: hourFilteredDistortions[i].time,
                                             entryPrice: tradeEntryPrice,
-                                            exitPrice: distVal,
+                                            exitPrice: targetExit,
                                             avgPrice: avgPrice,
                                             layers: currentLayers,
                                             profit: totalTradeProfit,
@@ -764,14 +765,15 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                                     const targetExit = avgPrice + targetProfitTicks; // Exit higher than avg
 
                                     if (distVal >= targetExit) {
-                                        const profitPerShare = distVal - avgPrice;
+                                        // Conservative: Exit at Target
+                                        const profitPerShare = targetExit - avgPrice;
                                         const totalTradeProfit = profitPerShare * currentLayers;
 
                                         tradeHistory.push({
                                             entryTime: tradeEntryTime,
                                             exitTime: hourFilteredDistortions[i].time,
                                             entryPrice: tradeEntryPrice,
-                                            exitPrice: distVal,
+                                            exitPrice: targetExit,
                                             avgPrice: avgPrice,
                                             layers: currentLayers,
                                             profit: totalTradeProfit,
