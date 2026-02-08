@@ -84,15 +84,34 @@ export function AnalysisDashboard() {
 
     const CustomTooltip = ({ active, payload, label }) => {
         if (active && payload && payload.length) {
+            // Get the data point from the payload
+            const dataPoint = payload[0].payload;
+
             return (
-                <div className="bg-slate-800 border border-slate-700 p-3 rounded shadow-xl text-xs">
-                    <p className="font-semibold text-slate-200 mb-1">{`Data: ${label}`}</p>
-                    {payload.map((entry, index) => (
-                        <div key={index} className="flex items-center gap-2 mb-1" style={{ color: entry.color }}>
-                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }}></span>
-                            <span>{`${entry.name}: ${entry.value.toFixed(2)}`}</span>
+                <div className="bg-slate-800 border border-slate-700 p-4 rounded-xl shadow-2xl text-xs max-w-xs z-50">
+                    <p className="font-bold text-slate-200 mb-2 border-b border-slate-700 pb-2">
+                        {new Date(dataPoint.timestamp).toLocaleString()}
+                    </p>
+
+                    <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                            <span className="text-slate-400">Distorção:</span>
+                            <span className="font-mono text-indigo-400 font-bold">{dataPoint.distortion.toFixed(2)} ticks</span>
                         </div>
-                    ))}
+
+                        <div className="flex justify-between items-center">
+                            <span className="text-slate-400">Retorno:</span>
+                            <span className={`font-mono font-bold ${dataPoint.nextReturn > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {dataPoint.nextReturn > 0 ? '+' : ''}{dataPoint.nextReturn.toFixed(2)} ticks
+                            </span>
+                        </div>
+
+                        <div className="mt-2 pt-2 border-t border-slate-700">
+                            <span className={`block text-center font-bold px-2 py-1 rounded ${dataPoint.status.includes('Reversão') ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                                {dataPoint.status}
+                            </span>
+                        </div>
+                    </div>
                 </div>
             );
         }
