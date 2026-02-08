@@ -308,6 +308,18 @@ export const calculateGridStrategy = (data, selectedSMA) => {
 
     const results = [];
 
+    // Debug: Check distortion range
+    const distValues = distortions.map(d => d.val);
+    const minDist = Math.min(...distValues);
+    const maxDist = Math.max(...distValues);
+    const negativeCount = distValues.filter(v => v < 0).length;
+    const positiveCount = distValues.filter(v => v > 0).length;
+    console.log(`📊 Distortion Analysis:`);
+    console.log(`   Min: ${minDist.toFixed(1)} ticks | Max: ${maxDist.toFixed(1)} ticks`);
+    console.log(`   Negative: ${negativeCount} (${(negativeCount / distValues.length * 100).toFixed(1)}%)`);
+    console.log(`   Positive: ${positiveCount} (${(positiveCount / distValues.length * 100).toFixed(1)}%)`);
+    console.log(`   Testing entries: ${entries.join(', ')} ticks`);
+
     entries.forEach(initialEntry => {
         steps.forEach(step => {
             let totalProfit = 0;
@@ -340,6 +352,7 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                         peakAdverseFromLastTrade = 0;
                         tradeEntryTime = distortions[i].time;
                         tradeEntryPrice = initialEntry;
+                        console.log(`SELL Entry: dist=${currentDist}, entry=${initialEntry}`);
                     }
                     // Check for BUY entry (negative distortion)
                     else if (currentDist <= -initialEntry) {
@@ -351,6 +364,7 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                         peakAdverseFromLastTrade = 0;
                         tradeEntryTime = distortions[i].time;
                         tradeEntryPrice = -initialEntry;
+                        console.log(`BUY Entry: dist=${currentDist}, entry=${-initialEntry}`);
                     }
                 } else {
                     // MANAGE TRADE
