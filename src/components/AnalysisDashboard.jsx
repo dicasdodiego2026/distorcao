@@ -583,7 +583,7 @@ export function AnalysisDashboard() {
                                         <div className="hidden sm:block text-slate-700">|</div>
                                         <div className="flex items-center gap-2">
                                             <Clock className="w-4 h-4 text-amber-400" />
-                                            <span><strong>Melhor Horário:</strong> {gridStrategy.bestTimeWindow}</span>
+                                            <span><strong>Melhor Horário:</strong> {gridStrategy.bestTimeWindow} (DD: {gridStrategy.bestTimeWindowDrawdown.toFixed(0)} ticks)</span>
                                         </div>
                                     </div>
                                 </div>

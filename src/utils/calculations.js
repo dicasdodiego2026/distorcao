@@ -510,16 +510,17 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                 count: stats.count
             };
         });
-        
+
         // Sort by safety score (best risk-adjusted performance)
         hourScores.sort((a, b) => b.safetyScore - a.safetyScore);
-        
+
         const bestHour = hourScores[0].hour;
+        const bestHourDrawdown = hourScores[0].drawdown; // Drawdown of recommended hour
         const endHour = bestHour + 1;
 
         const formatH = (h) => h < 10 ? `0${h}` : `${h}`;
-        bestWindow = { label: `${formatH(bestHour)}:00 às ${formatH(endHour)}:00` };
-        
+        bestWindow = { label: `${formatH(bestHour)}:00 às ${formatH(endHour)}:00`, drawdown: bestHourDrawdown };
+
         // Find worst drawdown
         hourScores.sort((a, b) => b.drawdown - a.drawdown);
         const worstHour = hourScores[0].hour;
@@ -532,6 +533,7 @@ export const calculateGridStrategy = (data, selectedSMA) => {
     return {
         ...bestConfig,
         bestTimeWindow: bestWindow.label,
+        bestTimeWindowDrawdown: bestWindow.drawdown || 0,
         worstDrawdownHour: worstDrawdownHour.hour
     };
 };
