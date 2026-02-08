@@ -411,13 +411,15 @@ export const calculateGridStrategy = (data, selectedSMA) => {
     if (!bestConfig) return null;
 
     // --- TIME WINDOW ANALYSIS ---
-    // Re-run simulation with best config to map performance by Hour
-    const hourStats = {}; // { "09": { profit: 0, count: 0 } }
+    // Re-run simulation with best config to map performance AND RISK by Hour
+    const hourStats = {}; // { hour: { profit: 0, maxDrawdown: 0, count: 0 } }
 
     let inTrade = false;
     let currentLayers = 0;
     let avgPrice = 0;
     let tradeStartTime = "";
+    let tradeStartHour = 0;
+    let peakAdverseThisTrade = 0;
 
     for (let i = 0; i < distortions.length; i++) {
         const currentDist = distortions[i].val;
@@ -429,6 +431,10 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                 currentLayers = 1;
                 avgPrice = bestConfig.initialEntry;
                 tradeStartTime = currentTime;
+                peakAdverseThisTrade = 0;
+
+                const date = new Date(tradeStartTime);
+                tradeStartHour = date.getHours();
             }
         } else {
             const nextLevel = bestConfig.initialEntry + (bestConfig.step * currentLayers);
@@ -436,6 +442,10 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                 currentLayers++;
                 avgPrice = ((avgPrice * (currentLayers - 1)) + nextLevel) / currentLayers;
             }
+
+            // Track Drawdown during trade
+            const currentFloat = currentDist - avgPrice;
+            if (currentFloat > peakAdverseThisTrade) peakAdverseThisTrade = currentFloat;
 
             const targetExit = Math.max(0, avgPrice - targetProfitTicks);
             if (currentDist <= targetExit) {
@@ -462,7 +472,7 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                 const date = new Date(tradeStartTime);
                 const hour = date.getHours(); // 0-23 (number)
 
-                if (!hourStats[hour]) hourStats[hour] = { profit: 0, count: 0 };
+                if (!hourStats[hour]) hourStats[hour] = { profit: 0, maxDrawdown: 0, count: 0 };
 
                 const profitPerShare = avgPrice - currentDist;
                 const totalTradeProfit = profitPerShare * currentLayers;
@@ -470,25 +480,58 @@ export const calculateGridStrategy = (data, selectedSMA) => {
                 hourStats[hour].profit += totalTradeProfit;
                 hourStats[hour].count += 1;
 
+                // Update max drawdown for this hour
+                if (peakAdverseThisTrade > hourStats[hour].maxDrawdown) {
+                    hourStats[hour].maxDrawdown = peakAdverseThisTrade;
+                }
+
                 inTrade = false;
                 currentLayers = 0;
             }
         }
     }
 
-    // Find Best Window
-    // Simple logic: Best single hour for now
+    // Find Best Window (Safety Score = Profit / Drawdown)
+    // Also find Worst Drawdown Hour
     let bestWindow = { label: "Dia Todo" };
+    let worstDrawdownHour = { hour: "N/A", value: 0 };
     const hours = Object.keys(hourStats).filter(h => hourStats[h].profit > 0);
 
     if (hours.length > 0) {
-        hours.sort((a, b) => hourStats[b].profit - hourStats[a].profit); // Highest Profit First
-        const bestHour = parseInt(hours[0]);
+        // Calculate safety scores
+        const hourScores = hours.map(h => {
+            const stats = hourStats[h];
+            const safetyScore = stats.profit / (stats.maxDrawdown + 1);
+            return {
+                hour: parseInt(h),
+                profit: stats.profit,
+                drawdown: stats.maxDrawdown,
+                safetyScore,
+                count: stats.count
+            };
+        });
+        
+        // Sort by safety score (best risk-adjusted performance)
+        hourScores.sort((a, b) => b.safetyScore - a.safetyScore);
+        
+        const bestHour = hourScores[0].hour;
         const endHour = bestHour + 1;
 
         const formatH = (h) => h < 10 ? `0${h}` : `${h}`;
         bestWindow = { label: `${formatH(bestHour)}:00 às ${formatH(endHour)}:00` };
+        
+        // Find worst drawdown
+        hourScores.sort((a, b) => b.drawdown - a.drawdown);
+        const worstHour = hourScores[0].hour;
+        worstDrawdownHour = {
+            hour: `${formatH(worstHour)}:00`,
+            value: hourScores[0].drawdown
+        };
     }
 
-    return { ...bestConfig, bestTimeWindow: bestWindow.label };
+    return {
+        ...bestConfig,
+        bestTimeWindow: bestWindow.label,
+        worstDrawdownHour: worstDrawdownHour.hour
+    };
 };

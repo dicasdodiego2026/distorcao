@@ -578,7 +578,7 @@ export function AnalysisDashboard() {
                                         <div className="hidden sm:block text-slate-700">|</div>
                                         <div className="flex items-center gap-2">
                                             <Shield className="w-4 h-4 text-rose-400" />
-                                            <span><strong>Drawdown Máx:</strong> {gridStrategy.maxDrawdown.toFixed(0)} ticks (sobre o Médio).</span>
+                                            <span><strong>Drawdown Máx:</strong> {gridStrategy.maxDrawdown.toFixed(0)} ticks (pior às {gridStrategy.worstDrawdownHour}).</span>
                                         </div>
                                         <div className="hidden sm:block text-slate-700">|</div>
                                         <div className="flex items-center gap-2">
