@@ -289,7 +289,7 @@ export const calculateGridStrategy = (data, selectedSMA) => {
     // Map with Time preserved
     const distortions = data
         .filter(d => d[distKey] !== null)
-        .map(d => ({ val: Math.abs(d[distKey]), time: d.timestamp }));
+        .map(d => ({ val: d[distKey], time: d.timestamp }));
 
     if (distortions.length === 0) return null;
 
