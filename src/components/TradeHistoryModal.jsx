@@ -2,7 +2,7 @@ import React from 'react';
 import { X, TrendingDown, Calendar, Clock, DollarSign, Layers, BarChart3 } from 'lucide-react';
 
 export const TradeHistoryModal = ({ isOpen, onClose, tradeHistory, timeWindow }) => {
-    if (!isOpen || !tradeHistory) return null;
+    if (!isOpen || !tradeHistory || !Array.isArray(tradeHistory) || tradeHistory.length === 0) return null;
 
     // Group trades by day
     const tradesByDay = {};
