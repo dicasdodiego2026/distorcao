@@ -281,3 +281,117 @@ export const findOptimalStrategy = (data, selectedSMA) => {
 
     return { balanced, conservative, aggressive };
 };
+
+export const calculateGridStrategy = (data, selectedSMA) => {
+    if (!data || data.length === 0) return null;
+
+    const distKey = `dist${selectedSMA}`;
+    const distortions = data
+        .filter(d => d[distKey] !== null)
+        .map(d => Math.abs(d[distKey]));
+
+    if (distortions.length === 0) return null;
+
+
+
+    // We will test several grid configurations
+    // Initial Entry: 5, 10, 15, 20
+    // Step: 5, 8, 10, 12, 15
+    // Max Layers: Fixed at 3 (Entry + 2 additions) for safety
+    // Exit Target: Breakeven + X ticks (e.g. 5 ticks gain on average price)
+
+    const entries = [10, 15, 20];
+    const steps = [5, 8, 10, 12, 15];
+    const maxLayers = 3;
+    const targetProfitTicks = 5;
+
+    const results = [];
+
+    entries.forEach(initialEntry => {
+        steps.forEach(step => {
+            let totalProfit = 0;
+            let maxDrawdown = 0; // Max negative float
+            let tradeCount = 0;
+
+            // Simulation State
+            let inTrade = false;
+            let currentLayers = 0;
+            let avgPrice = 0;
+            let peakAdverse = 0; // How far price went against AvgPrice
+
+            for (let i = 0; i < distortions.length; i++) {
+                const currentDist = distortions[i];
+
+                if (!inTrade) {
+                    if (currentDist >= initialEntry) {
+                        // OPEN TRADE
+                        inTrade = true;
+                        currentLayers = 1;
+                        avgPrice = initialEntry; // Simplified assumption: we entered exactly at threshold
+                        peakAdverse = 0;
+                    }
+                } else {
+                    // MANAGE TRADE
+
+                    // 1. Check for Additions (Grid)
+                    // If we are below max layers and price moved against us by Step
+                    // With Distortion, "Against" means it went HIGHER than our entry
+                    const nextLevel = initialEntry + (step * currentLayers);
+
+                    if (currentLayers < maxLayers && currentDist >= nextLevel) {
+                        // ADD LAYER
+                        // New Avg = ((OldAvg * OldCount) + NewPrice) / NewCount
+                        // We assume we fill exactly at the level (nextLevel)
+                        avgPrice = ((avgPrice * currentLayers) + nextLevel) / (currentLayers + 1);
+                        currentLayers++;
+                    }
+
+                    // 2. Track Drawdown (Float)
+                    // Current Price (Distortion) - Avg Price
+                    const currentFloat = currentDist - avgPrice;
+                    if (currentFloat > peakAdverse) peakAdverse = currentFloat;
+
+                    // 3. Check for Exit
+                    // Short Condition: Distortion drops below Target
+                    // Target = AvgPrice - ProfitTicks
+                    // Or if it reverts to 0 (Mean), that's always a win
+                    const targetExit = Math.max(0, avgPrice - targetProfitTicks);
+
+                    if (currentDist <= targetExit) {
+                        // CLOSE TRADE
+                        const profitPerShare = avgPrice - currentDist; // should be approx targetProfitTicks
+                        const totalTradeProfit = profitPerShare * currentLayers;
+
+                        totalProfit += totalTradeProfit;
+                        tradeCount++;
+
+                        // Reset
+                        inTrade = false;
+                        currentLayers = 0;
+                        avgPrice = 0;
+                    }
+                }
+            }
+
+            if (tradeCount > 3) {
+                // Score = Profit / MaxDrawdown (Calmar-ish ratio)
+                // Avoid division by zero
+                const score = totalProfit / (peakAdverse || 1);
+
+                results.push({
+                    initialEntry,
+                    step,
+                    maxLayers,
+                    avgPrice, // purely indicative of last state
+                    totalProfit,
+                    maxDrawdown: peakAdverse,
+                    tradeCount,
+                    score
+                });
+            }
+        });
+    });
+
+    results.sort((a, b) => b.score - a.score);
+    return results[0]; // Return Best Configuration
+};

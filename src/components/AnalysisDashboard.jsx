@@ -3,8 +3,8 @@ import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
     BarChart, Bar, ScatterChart, Scatter, ZAxis, ReferenceLine, ComposedChart, Area
 } from 'recharts';
-import { Upload, FileText, AlertCircle, Activity, BarChart2, TrendingUp, Clock, CheckCircle, Lightbulb, BookOpen, Target, Shield, Zap } from 'lucide-react';
-import { parseLogData, calculateSMA, calculateDistortions, generateStats, aggregateByTime, findOptimalStrategy } from '../utils/calculations';
+import { Upload, FileText, AlertCircle, Activity, BarChart2, TrendingUp, Clock, CheckCircle, Lightbulb, BookOpen, Target, Shield, Zap, Layers } from 'lucide-react';
+import { parseLogData, calculateSMA, calculateDistortions, generateStats, aggregateByTime, findOptimalStrategy, calculateGridStrategy } from '../utils/calculations';
 import { FileUpload } from './FileUpload';
 
 const InsightCard = ({ title, icon: Icon, children }) => (
@@ -66,6 +66,11 @@ export function AnalysisDashboard() {
     // Strategy Optimization
     const strategies = useMemo(() => {
         return findOptimalStrategy(data, selectedSMA);
+    }, [data, selectedSMA]);
+
+    // Grid Strategy Optimization
+    const gridStrategy = useMemo(() => {
+        return calculateGridStrategy(data, selectedSMA);
     }, [data, selectedSMA]);
 
     const CustomTooltip = ({ active, payload, label }) => {
@@ -491,6 +496,89 @@ export function AnalysisDashboard() {
                                                     </p>
                                                 </div>
                                             </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Grid Intelligente Recommendation */}
+                        {gridStrategy && (
+                            <div className="bg-gradient-to-br from-indigo-900/40 to-slate-900/60 border border-indigo-500/30 rounded-2xl p-8 relative overflow-hidden shadow-2xl backdrop-blur-sm">
+                                <div className="absolute -top-10 -right-10 opacity-5 pointer-events-none">
+                                    <Layers className="w-96 h-96 text-white" />
+                                </div>
+                                <div className="relative z-10">
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                                        <div className="flex items-center gap-4">
+                                            <div className="bg-indigo-600/20 p-3 rounded-xl border border-indigo-500/30">
+                                                <Layers className="w-8 h-8 text-indigo-400" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-2xl font-bold text-white tracking-tight">Estratégia de Grid (Preço Médio)</h3>
+                                                <p className="text-slate-400 text-sm">Otimização para aumento de taxa de acerto via escalonamento.</p>
+                                            </div>
+                                        </div>
+                                        <div className="bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-lg text-emerald-400 text-sm font-semibold animate-pulse">
+                                            Recomendado para Alta Volatilidade
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                                        <div className="bg-slate-950/50 p-6 rounded-xl border border-indigo-500/10 hover:border-indigo-500/30 transition-colors">
+                                            <span className="text-xs font-bold text-indigo-300 uppercase tracking-wider mb-2 block">1. Entrada Inicial</span>
+                                            <div className="text-4xl font-black text-white tracking-tight flex items-baseline gap-1">
+                                                {gridStrategy.initialEntry}
+                                                <span className="text-lg text-slate-500 font-medium">ticks</span>
+                                            </div>
+                                            <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                                                Inicie a operação contra a tendência quando a distorção tocar este valor.
+                                            </p>
+                                        </div>
+
+                                        <div className="bg-slate-950/50 p-6 rounded-xl border border-indigo-500/10 hover:border-indigo-500/30 transition-colors">
+                                            <span className="text-xs font-bold text-indigo-300 uppercase tracking-wider mb-2 block">2. Passo do Grid</span>
+                                            <div className="text-4xl font-black text-indigo-400 tracking-tight flex items-baseline gap-1">
+                                                {gridStrategy.step}
+                                                <span className="text-lg text-slate-500 font-medium">ticks</span>
+                                            </div>
+                                            <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                                                Adicione novos lotes a cada {gridStrategy.step} ticks contra sua posição. Max: {gridStrategy.maxLayers} camadas.
+                                            </p>
+                                        </div>
+
+                                        <div className="bg-slate-950/50 p-6 rounded-xl border border-rose-500/10 hover:border-rose-500/30 transition-colors group">
+                                            <span className="text-xs font-bold text-rose-300 uppercase tracking-wider mb-2 block group-hover:text-rose-200 transition-colors">Risco (Drawdown)</span>
+                                            <div className="text-4xl font-black text-rose-400 tracking-tight flex items-baseline gap-1">
+                                                {gridStrategy.maxDrawdown.toFixed(0)}
+                                                <span className="text-lg text-slate-500 font-medium">ticks</span>
+                                            </div>
+                                            <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                                                Máxima exposição negativa simulada. Seu Stop Loss deve ser maior que isso.
+                                            </p>
+                                        </div>
+
+                                        <div className="bg-slate-950/50 p-6 rounded-xl border border-emerald-500/10 hover:border-emerald-500/30 transition-colors group">
+                                            <span className="text-xs font-bold text-emerald-300 uppercase tracking-wider mb-2 block group-hover:text-emerald-200 transition-colors">Potencial de Lucro</span>
+                                            <div className="text-4xl font-black text-emerald-400 tracking-tight flex items-baseline gap-1">
+                                                +{gridStrategy.totalProfit.toFixed(0)}
+                                                <span className="text-lg text-slate-500 font-medium">ticks</span>
+                                            </div>
+                                            <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                                                Resultado acumulado em {gridStrategy.tradeCount} operações simuladas.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-8 flex flex-col sm:flex-row gap-4 pt-6 border-t border-white/5 text-sm text-slate-300">
+                                        <div className="flex items-center gap-2">
+                                            <Target className="w-4 h-4 text-emerald-400" />
+                                            <span><strong>Alvo Dinâmico:</strong> Saia no Preço Médio + 5 ticks de lucro.</span>
+                                        </div>
+                                        <div className="hidden sm:block text-slate-700">|</div>
+                                        <div className="flex items-center gap-2">
+                                            <Shield className="w-4 h-4 text-rose-400" />
+                                            <span><strong>Proteção:</strong> Nunca exceda 3 adições de lote.</span>
                                         </div>
                                     </div>
                                 </div>
