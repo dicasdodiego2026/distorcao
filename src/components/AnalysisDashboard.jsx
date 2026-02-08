@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-    BarChart, Bar, ScatterChart, Scatter, ZAxis
+    BarChart, Bar, ScatterChart, Scatter, ZAxis, ReferenceLine
 } from 'recharts';
 import { Upload, FileText, AlertCircle, Activity, BarChart2, TrendingUp, Clock, CheckCircle, Lightbulb, BookOpen } from 'lucide-react';
 import { parseLogData, calculateSMA, calculateDistortions, generateStats } from '../utils/calculations';
@@ -65,10 +65,19 @@ export function AnalysisDashboard() {
             if (i >= data.length - 1) return null;
             const nextBar = data[i + 1];
             const ret = (nextBar.close - d.close) / d.tick_size; // Return in ticks
+            const distortion = d[`dist${selectedSMA}`];
+
+            // Classification: Reversion vs Trend
+            // Reversion: (Dist > 0 && Ret < 0) OR (Dist < 0 && Ret > 0) -> Opposing signs
+            // Trend: (Dist > 0 && Ret > 0) OR (Dist < 0 && Ret < 0) -> Same signs
+            const isReversion = (distortion > 0 && ret < 0) || (distortion < 0 && ret > 0);
+
             return {
-                distortion: d[`dist${selectedSMA}`],
+                distortion: distortion,
                 nextReturn: ret,
-                timestamp: d.timestamp
+                timestamp: d.timestamp,
+                status: isReversion ? "Reversão (Gain)" : "Tendência (Loss)",
+                fill: isReversion ? "#10b981" : "#f43f5e" // Emerald-500 vs Rose-500
             };
         }).filter(d => d && d.distortion !== null);
     }, [data, selectedSMA]);
@@ -270,17 +279,35 @@ export function AnalysisDashboard() {
                                                 tickLine={false}
                                                 axisLine={false}
                                             />
+                                            <ZAxis type="category" dataKey="status" name="Resultado" />
+                                            <ReferenceLine y={0} stroke="#475569" strokeDasharray="3 3" />
+                                            <ReferenceLine x={0} stroke="#475569" strokeDasharray="3 3" />
                                             <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip />} />
-                                            <Scatter name="Observações" data={scatterData} fill="#818cf8" fillOpacity={0.6} />
+                                            <Legend />
+                                            <Scatter name="Reversão (Lucro)" data={scatterData.filter(d => d.status.includes('Reversão'))} fill="#10b981" fillOpacity={0.6} />
+                                            <Scatter name="Tendência (Prejuízo)" data={scatterData.filter(d => d.status.includes('Tendência'))} fill="#f43f5e" fillOpacity={0.6} />
                                         </ScatterChart>
                                     </ResponsiveContainer>
                                 </div>
-                                <InsightCard title="Validação de Elasticidade" icon={Activity}>
-                                    Este gráfico prova se o "efeito elástico" funciona.
-                                    <ul className="list-disc pl-4 mt-1 space-y-1">
-                                        <li>Pontos no <strong>Topo-Esquerdo</strong> ou <strong>Fundo-Direito</strong> indicam que quando o preço estica, ele volta (setup conservador).</li>
-                                        <li>Se os pontos seguem uma linha reta, cuidado: o mercado está em tendência forte e não vai voltar!</li>
-                                    </ul>
+                                <InsightCard title="Raio-X da Estratégia" icon={Activity}>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <h4 className="font-bold text-emerald-400 mb-1">Pontos Verdes (Lucro)</h4>
+                                            <p className="text-xs text-slate-400">
+                                                Distorção Alta + Retorno Contrário.
+                                                <br />
+                                                Isso é o que queremos! Mostra que o preço "respeitou" o afastamento e voltou.
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <h4 className="font-bold text-rose-400 mb-1">Pontos Vermelhos (Perigo)</h4>
+                                            <p className="text-xs text-slate-400">
+                                                Distorção Alta + Preço continuou indo embora.
+                                                <br />
+                                                <strong>Atenção:</strong> Se houver muitos vermelhos distantes do centro, evite operar contra a tendência nesse ativo.
+                                            </p>
+                                        </div>
+                                    </div>
                                 </InsightCard>
                             </div>
 
