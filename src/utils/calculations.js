@@ -1,11 +1,25 @@
 
 export const parseLogData = (fileContent) => {
+    if (!fileContent) return [];
     const bars = [];
     let braceCount = 0;
     let startIndex = -1;
     let inString = false;
     let escape = false;
 
+    // Pre-process: sometimes files have weird characters or are just array of objects without comma
+    // If it starts with [, it might be a valid JSON array
+    const trimmed = fileContent.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        try {
+            const validJson = JSON.parse(trimmed);
+            return validJson.map(mapBarData).filter(Boolean).sort((a, b) => a.timestamp - b.timestamp);
+        } catch (e) {
+            console.warn("Array parsing failed, falling back to stream parsing", e);
+        }
+    }
+
+    // Stream parser for concatenated JSON objects
     for (let i = 0; i < fileContent.length; i++) {
         const char = fileContent[i];
 
@@ -34,18 +48,8 @@ export const parseLogData = (fileContent) => {
                 const jsonStr = fileContent.substring(startIndex, i + 1);
                 try {
                     const data = JSON.parse(jsonStr);
-                    if (data.barra) {
-                        bars.push({
-                            timestamp: new Date(data.timestamp_barra),
-                            open: data.barra.open,
-                            high: data.barra.high,
-                            low: data.barra.low,
-                            close: data.barra.close,
-                            volume: data.barra.volume,
-                            tick_size: data.barra.tick_size,
-                            direcao: data.barra.direcao
-                        });
-                    }
+                    const mapped = mapBarData(data);
+                    if (mapped) bars.push(mapped);
                 } catch (e) {
                     console.warn("Failed to parse JSON chunk", e);
                 }
@@ -55,6 +59,28 @@ export const parseLogData = (fileContent) => {
     }
 
     return bars.sort((a, b) => a.timestamp - b.timestamp);
+};
+
+const mapBarData = (data) => {
+    // Handle both direct object (if log is just bar) or nested {barra: ...}
+    const bar = data.barra || data;
+
+    if (!bar || typeof bar.close === 'undefined') return null;
+
+    // Handle timestamp: might be directly on data, or inside bar, or specific fields
+    const ts = data.timestamp_barra || bar.timestamp || data.timestamp;
+    if (!ts) return null;
+
+    return {
+        timestamp: new Date(ts),
+        open: Number(bar.open),
+        high: Number(bar.high),
+        low: Number(bar.low),
+        close: Number(bar.close),
+        volume: Number(bar.volume),
+        tick_size: Number(bar.tick_size || data.tick_size || 0.5), // fallback
+        direcao: bar.direcao
+    };
 };
 
 export const calculateSMA = (data, period) => {
@@ -82,17 +108,8 @@ export const calculateDistortions = (bars, smaPer10, smaPer25, smaPer50) => {
 
         const getDistortion = (sma, priceBar) => {
             if (sma === null) return null;
-            // Per user request:
-            // If Close > SMA (Price above average) -> Distortion based on High
-            // If Close < SMA (Price below average) -> Distortion based on Low
-
-            // Let's use signed distortion:
-            // Positive = Price Above SMA (High - SMA)
-            // Negative = Price Below SMA (Low - SMA)
-
-            // Wait, standard reversion trade logic: if price is very HIGH above SMA, getting ready to short. 
-            // So dist is positive. If price is very LOW below SMA, getting ready to buy. Dist is negative.
-
+            // Distortion = Price - SMA
+            // We use High if above SMA, Low if below SMA
             if (priceBar.close >= sma) {
                 return (priceBar.high - sma) / priceBar.tick_size;
             } else {
@@ -113,7 +130,6 @@ export const calculateDistortions = (bars, smaPer10, smaPer25, smaPer50) => {
 };
 
 export const generateStats = (data, selectedSMA) => {
-    // Filter valid data
     const validData = data.filter(d => d[`dist${selectedSMA}`] !== null);
 
     if (validData.length === 0) return null;
@@ -121,12 +137,11 @@ export const generateStats = (data, selectedSMA) => {
     const distortions = validData.map(d => d[`dist${selectedSMA}`]);
     const maxDistortion = Math.max(...distortions);
     const minDistortion = Math.min(...distortions);
-    const avgDistortion = distortions.reduce((a, b) => a + Math.abs(b), 0) / distortions.length; // Mean Absolute Deviation
+    const avgDistortion = distortions.reduce((a, b) => a + Math.abs(b), 0) / distortions.length;
 
-    // Histogram
     const histogram = {};
     distortions.forEach(d => {
-        const bucket = Math.floor(d / 5) * 5; // Bucket size 5 ticks
+        const bucket = Math.floor(d / 5) * 5;
         histogram[bucket] = (histogram[bucket] || 0) + 1;
     });
 
