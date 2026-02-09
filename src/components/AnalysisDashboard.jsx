@@ -4,7 +4,7 @@ import {
     BarChart, Bar, ScatterChart, Scatter, ZAxis, ReferenceLine, ComposedChart, Area
 } from 'recharts';
 import { Upload, FileText, AlertCircle, Activity, BarChart2, TrendingUp, Clock, CheckCircle, Lightbulb, BookOpen, Target, Shield, Zap, Layers } from 'lucide-react';
-import { parseLogData, calculateSMA, calculateDistortions, generateStats, aggregateByTime, findOptimalStrategy, calculateGridStrategy } from '../utils/calculations';
+import { parseLogData, calculateSMA, calculateDistortions, generateStats, aggregateByTime, findOptimalStrategy, calculateGridStrategy, findSafeTimeInterval } from '../utils/calculations';
 import { FileUpload } from './FileUpload';
 import { TradeHistoryModal } from './TradeHistoryModal';
 
@@ -73,6 +73,11 @@ export function AnalysisDashboard() {
     // Grid Strategy Optimization
     const gridStrategy = useMemo(() => {
         return calculateGridStrategy(data, selectedSMA);
+    }, [data, selectedSMA]);
+
+    // Safe Time Interval Analysis
+    const safeInterval = useMemo(() => {
+        return findSafeTimeInterval(data, selectedSMA, 150);
     }, [data, selectedSMA]);
 
     const CustomTooltip = ({ active, payload, label }) => {
@@ -706,6 +711,115 @@ export function AnalysisDashboard() {
                                             <p className="text-xs text-slate-500 mt-1">Número máximo de adições permitidas</p>
                                         </div>
                                     </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Safe Time Interval Card */}
+                        {safeInterval && (
+                            <div className={`rounded-2xl p-8 relative overflow-hidden shadow-2xl mt-8 ${safeInterval.found
+                                    ? 'bg-gradient-to-br from-emerald-900/40 to-slate-900/60 border border-emerald-500/30'
+                                    : 'bg-gradient-to-br from-amber-900/30 to-slate-900/60 border border-amber-500/30'
+                                }`}>
+                                <div className="absolute -top-10 -right-10 opacity-5 pointer-events-none">
+                                    <Shield className={`w-96 h-96 ${safeInterval.found ? 'text-emerald-500' : 'text-amber-500'}`} />
+                                </div>
+                                <div className="relative z-10">
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                                        <div className="flex items-center gap-4">
+                                            <div className={`p-3 rounded-xl border ${safeInterval.found
+                                                    ? 'bg-emerald-600/20 border-emerald-500/30'
+                                                    : 'bg-amber-600/20 border-amber-500/30'
+                                                }`}>
+                                                <Shield className={`w-8 h-8 ${safeInterval.found ? 'text-emerald-400' : 'text-amber-400'}`} />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-2xl font-bold text-white tracking-tight">Intervalo Seguro para Operações</h3>
+                                                <p className="text-slate-400 text-sm">
+                                                    Horários onde a distorção NUNCA passou de {safeInterval.threshold} ticks em todos os dias analisados
+                                                </p>
+                                            </div>
+                                        </div>
+                                        {safeInterval.found && (
+                                            <div className="bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-lg text-emerald-400 text-sm font-semibold">
+                                                Padrão Encontrado ✓
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {safeInterval.found ? (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                                            <div className="bg-slate-950/50 p-6 rounded-xl border border-emerald-500/10 hover:border-emerald-500/30 transition-colors">
+                                                <span className="text-xs font-bold text-emerald-300 uppercase tracking-wider mb-2 block">⏰ Intervalo Seguro</span>
+                                                <div className="text-3xl font-black text-white tracking-tight">
+                                                    {safeInterval.startTime} - {safeInterval.endTime}
+                                                </div>
+                                                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                                                    Duração: {safeInterval.durationMinutes} minutos
+                                                </p>
+                                            </div>
+
+                                            <div className="bg-slate-950/50 p-6 rounded-xl border border-indigo-500/10 hover:border-indigo-500/30 transition-colors">
+                                                <span className="text-xs font-bold text-indigo-300 uppercase tracking-wider mb-2 block">📊 Distorção Máx. Observada</span>
+                                                <div className="text-4xl font-black text-indigo-400 tracking-tight flex items-baseline gap-1">
+                                                    {safeInterval.maxDistortionObserved}
+                                                    <span className="text-lg text-slate-500 font-medium">ticks</span>
+                                                </div>
+                                                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                                                    Pior caso observado neste intervalo (dentro do limite de {safeInterval.threshold})
+                                                </p>
+                                            </div>
+
+                                            <div className="bg-slate-950/50 p-6 rounded-xl border border-cyan-500/10 hover:border-cyan-500/30 transition-colors">
+                                                <span className="text-xs font-bold text-cyan-300 uppercase tracking-wider mb-2 block">📈 Distorção Média Padrão</span>
+                                                <div className="text-4xl font-black text-cyan-400 tracking-tight flex items-baseline gap-1">
+                                                    {safeInterval.avgDistortion}
+                                                    <span className="text-lg text-slate-500 font-medium">ticks</span>
+                                                </div>
+                                                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                                                    Distorção média típica neste intervalo
+                                                </p>
+                                            </div>
+
+                                            <div className="bg-slate-950/50 p-6 rounded-xl border border-slate-500/10 hover:border-slate-500/30 transition-colors">
+                                                <span className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2 block">📅 Dias Analisados</span>
+                                                <div className="text-4xl font-black text-slate-300 tracking-tight">
+                                                    {safeInterval.daysAnalyzed}
+                                                </div>
+                                                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                                                    Todos respeitaram o limite de {safeInterval.threshold} ticks
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-6 text-center">
+                                            <div className="flex items-center justify-center gap-3 mb-3">
+                                                <AlertCircle className="w-6 h-6 text-amber-400" />
+                                                <span className="text-lg font-semibold text-amber-400">Nenhum Intervalo Seguro Encontrado</span>
+                                            </div>
+                                            <p className="text-slate-400 text-sm max-w-2xl mx-auto">
+                                                Nos <strong className="text-white">{safeInterval.daysAnalyzed} dias</strong> analisados, não foi encontrado nenhum intervalo de horário onde a distorção
+                                                ficou consistentemente abaixo de <strong className="text-amber-400">{safeInterval.threshold} ticks</strong> (acima ou abaixo da média) em todos os dias.
+                                            </p>
+                                            <p className="text-slate-500 text-xs mt-3">
+                                                💡 Dica: Considere aumentar o threshold ou analisar um período diferente.
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {safeInterval.found && (
+                                        <InsightCard title="Como usar este intervalo" icon={Lightbulb}>
+                                            <p>
+                                                Durante <strong className="text-emerald-400">{safeInterval.startTime} às {safeInterval.endTime}</strong>,
+                                                você pode operar estratégias de distanciamento com maior segurança.
+                                            </p>
+                                            <p className="mt-2">
+                                                A distorção máxima foi de apenas <strong className="text-indigo-400">{safeInterval.maxDistortionObserved} ticks</strong>,
+                                                bem abaixo do limite de {safeInterval.threshold}. Isso significa que um stop de <strong className="text-rose-400">{safeInterval.threshold} ticks</strong> nunca
+                                                teria sido atingido neste horário em nenhum dos {safeInterval.daysAnalyzed} dias analisados.
+                                            </p>
+                                        </InsightCard>
+                                    )}
                                 </div>
                             </div>
                         )}
