@@ -25,6 +25,7 @@ export function AnalysisDashboard() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [selectedSMA, setSelectedSMA] = useState(10); // 10, 25, 50
+    const [safeThreshold, setSafeThreshold] = useState(150); // New: Configurable threshold
     const [showTradeHistory, setShowTradeHistory] = useState(false);
 
     const handleDataLoaded = (content) => {
@@ -76,9 +77,10 @@ export function AnalysisDashboard() {
     }, [data, selectedSMA]);
 
     // Safe Time Interval Analysis
+    // Safe Time Interval Analysis
     const safeInterval = useMemo(() => {
-        return findSafeTimeInterval(data, selectedSMA, 150);
-    }, [data, selectedSMA]);
+        return findSafeTimeInterval(data, selectedSMA, safeThreshold);
+    }, [data, selectedSMA, safeThreshold]);
 
     const CustomTooltip = ({ active, payload, label }) => {
         if (!active || !payload || !payload.length || !payload[0]) return null;
@@ -200,22 +202,44 @@ export function AnalysisDashboard() {
                         {/* Controls & Summary */}
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
 
-                            {/* SMA Selector Card */}
-                            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl col-span-1 md:col-span-1">
-                                <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3 block">Período da SMA</label>
-                                <div className="flex gap-2">
-                                    {[10, 25, 50].map(val => (
-                                        <button
-                                            key={val}
-                                            onClick={() => setSelectedSMA(val)}
-                                            className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all duration-200 border ${selectedSMA === val
-                                                ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
-                                                : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
-                                                }`}
-                                        >
-                                            {val}
-                                        </button>
-                                    ))}
+                            {/* Controls Card */}
+                            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl col-span-1 md:col-span-1 flex flex-col gap-6">
+                                <div>
+                                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3 block">Período da Média (SMA)</label>
+                                    <div className="flex gap-2">
+                                        {[10, 25, 50].map(val => (
+                                            <button
+                                                key={val}
+                                                onClick={() => setSelectedSMA(val)}
+                                                className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all duration-200 border ${selectedSMA === val
+                                                    ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
+                                                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
+                                                    }`}
+                                            >
+                                                SMA {val}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">Limite Seguro</label>
+                                        <span className="text-xs font-bold text-indigo-400 bg-indigo-500/10 px-2 py-1 rounded border border-indigo-500/20">{safeThreshold} ticks</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-slate-600 font-medium">50</span>
+                                        <input
+                                            type="range"
+                                            min="50"
+                                            max="500"
+                                            step="10"
+                                            value={safeThreshold}
+                                            onChange={(e) => setSafeThreshold(Number(e.target.value))}
+                                            className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400 transition-colors"
+                                        />
+                                        <span className="text-xs text-slate-600 font-medium">500</span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -718,8 +742,8 @@ export function AnalysisDashboard() {
                         {/* Safe Time Interval Card */}
                         {safeInterval && (
                             <div className={`rounded-2xl p-8 relative overflow-hidden shadow-2xl mt-8 ${safeInterval.found
-                                    ? 'bg-gradient-to-br from-emerald-900/40 to-slate-900/60 border border-emerald-500/30'
-                                    : 'bg-gradient-to-br from-amber-900/30 to-slate-900/60 border border-amber-500/30'
+                                ? 'bg-gradient-to-br from-emerald-900/40 to-slate-900/60 border border-emerald-500/30'
+                                : 'bg-gradient-to-br from-amber-900/30 to-slate-900/60 border border-amber-500/30'
                                 }`}>
                                 <div className="absolute -top-10 -right-10 opacity-5 pointer-events-none">
                                     <Shield className={`w-96 h-96 ${safeInterval.found ? 'text-emerald-500' : 'text-amber-500'}`} />
@@ -728,8 +752,8 @@ export function AnalysisDashboard() {
                                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                                         <div className="flex items-center gap-4">
                                             <div className={`p-3 rounded-xl border ${safeInterval.found
-                                                    ? 'bg-emerald-600/20 border-emerald-500/30'
-                                                    : 'bg-amber-600/20 border-amber-500/30'
+                                                ? 'bg-emerald-600/20 border-emerald-500/30'
+                                                : 'bg-amber-600/20 border-amber-500/30'
                                                 }`}>
                                                 <Shield className={`w-8 h-8 ${safeInterval.found ? 'text-emerald-400' : 'text-amber-400'}`} />
                                             </div>
@@ -740,11 +764,18 @@ export function AnalysisDashboard() {
                                                 </p>
                                             </div>
                                         </div>
-                                        {safeInterval.found && (
-                                            <div className="bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-lg text-emerald-400 text-sm font-semibold">
-                                                Padrão Encontrado ✓
-                                            </div>
-                                        )}
+                                        <div className="flex flex-col items-end gap-2">
+                                            {safeInterval.found && (
+                                                <div className="bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-lg text-emerald-400 text-sm font-semibold">
+                                                    Padrão Encontrado ✓
+                                                </div>
+                                            )}
+                                            {safeInterval.tickSize > 0 && (
+                                                <div className="text-xs text-slate-500 bg-slate-950/50 px-2 py-1 rounded border border-slate-800">
+                                                    Tick Size Detectado: <span className="text-slate-300 font-mono">{safeInterval.tickSize}</span>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
 
                                     {safeInterval.found ? (

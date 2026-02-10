@@ -104,6 +104,7 @@ const parseCSVData = (content) => {
     }
 
     const bars = [];
+
     for (let i = 1; i < lines.length; i++) {
         // Skip duplicate header lines from concatenated CSV files
         const trimmedLine = lines[i].trim();
@@ -127,7 +128,7 @@ const parseCSVData = (content) => {
                 low: Number(cols[lowIdx]),
                 close: Number(cols[closeIdx]),
                 volume: volIdx !== -1 ? Number(cols[volIdx]) : 0,
-                tick_size: 0.1, // RTY tick size
+                tick_size: 0.1, // Defaulting to RTY 0.1 as per request for this parser
                 direcao: undefined
             });
         } catch (e) {
@@ -915,10 +916,13 @@ export const calculateGridStrategy = (data, selectedSMA) => {
  * @param {number} maxDistortionThreshold - Max allowed distortion in ticks (default: 150)
  * @returns {Object} Safe interval info or null if not found
  */
+// Re-export findSafeTimeInterval to match the new logic signature
 export const findSafeTimeInterval = (data, selectedSMA, maxDistortionThreshold = 150) => {
-    if (!data || data.length === 0) return { found: false };
+    if (!data || data.length === 0) return { found: false, daysAnalyzed: 0, threshold: maxDistortionThreshold, tickSize: 0 };
 
     const distKey = `dist${selectedSMA}`;
+    // Detect tick size from the first valid bar for display and validation
+    const tickSize = data[0].tick_size || 0.5;
 
     // Step 1: Group data by date and by 10-minute interval
     const dateTimeMap = {}; // { date: { timeSlot: { max, min, count } } }
@@ -948,15 +952,22 @@ export const findSafeTimeInterval = (data, selectedSMA, maxDistortionThreshold =
             };
         }
 
+        // Validate strictly using Math.round to avoid float artifacts
+        // bar[distKey] is already In TICKS (float)
+        const roundedDistortion = Math.round(distortion * 10) / 10; // Preserving 1 decimal for display, but validation should be int logic?
+        // Actually, if tick_size is 0.25, distortion could be 10.5 ticks.
+        // User threshold is integer? "150 ticks".
+        // Let's rely on the float value but ensure we handle sign correctly.
+
         const slot = dateTimeMap[dateStr][timeSlot];
-        slot.maxPositive = Math.max(slot.maxPositive, distortion);
-        slot.maxNegative = Math.min(slot.maxNegative, distortion);
-        slot.sum += Math.abs(distortion);
+        slot.maxPositive = Math.max(slot.maxPositive, roundedDistortion);
+        slot.maxNegative = Math.min(slot.maxNegative, roundedDistortion);
+        slot.sum += Math.abs(roundedDistortion);
         slot.count++;
     });
 
     const daysAnalyzed = allDates.size;
-    if (daysAnalyzed === 0) return { found: false };
+    if (daysAnalyzed === 0) return { found: false, daysAnalyzed: 0, threshold: maxDistortionThreshold, tickSize };
 
     // Step 2: For each time slot, check if ALL days respected the threshold
     const sortedTimeSlots = Array.from(allTimeSlots).sort();
@@ -964,95 +975,103 @@ export const findSafeTimeInterval = (data, selectedSMA, maxDistortionThreshold =
 
     sortedTimeSlots.forEach(timeSlot => {
         let isValidAcrossAllDays = true;
-        let worstPositive = -Infinity;
-        let worstNegative = Infinity;
+        let maxObservedInThisSlot = 0;
         let totalSum = 0;
         let totalCount = 0;
         let daysWithData = 0;
 
         allDates.forEach(dateStr => {
             const slotData = dateTimeMap[dateStr]?.[timeSlot];
-            if (!slotData) return; // No data for this slot on this day
+            if (!slotData) return; // No data for this slot on this day, skip check for this day
 
             daysWithData++;
 
-            // Check if this day violated the threshold
-            if (slotData.maxPositive > maxDistortionThreshold ||
-                slotData.maxNegative < -maxDistortionThreshold) {
+            // Strict validation: Absolute distortion must NOT exceed threshold
+            // We check both maxPositive and maxNegative (which is negative number, so taking abs)
+            if (slotData.maxPositive > maxDistortionThreshold || Math.abs(slotData.maxNegative) > maxDistortionThreshold) {
                 isValidAcrossAllDays = false;
             }
 
-            worstPositive = Math.max(worstPositive, slotData.maxPositive);
-            worstNegative = Math.min(worstNegative, slotData.maxNegative);
+            const dailyMax = Math.max(Math.abs(slotData.maxPositive), Math.abs(slotData.maxNegative));
+            maxObservedInThisSlot = Math.max(maxObservedInThisSlot, dailyMax);
+
             totalSum += slotData.sum;
             totalCount += slotData.count;
         });
 
-        // Only consider slots that have data for at least 50% of days
-        if (isValidAcrossAllDays && daysWithData >= daysAnalyzed * 0.5) {
+        // Rule: Must be safe in ALL analyzed days that have data
+        // Rule: Must have data for at least 50% of analyzed days to be considered a valid pattern
+        // (Avoids identifying "safe" slot just because only 1 day had data for it)
+        if (isValidAcrossAllDays && daysWithData >= Math.ceil(daysAnalyzed * 0.5)) {
             safeSlots.push({
                 timeSlot,
-                maxDistortionObserved: Math.max(Math.abs(worstPositive), Math.abs(worstNegative)),
-                avgDistortion: totalCount > 0 ? totalSum / totalCount : 0,
-                daysWithData
+                maxDistortion: maxObservedInThisSlot,
+                avgDistortion: totalCount > 0 ? totalSum / totalCount : 0
             });
         }
     });
 
-    if (safeSlots.length === 0) {
-        return {
-            found: false,
-            threshold: maxDistortionThreshold,
-            daysAnalyzed
-        };
-    }
-
     // Step 3: Find the longest contiguous interval
-    let longestStart = 0;
-    let longestLength = 1;
-    let currentStart = 0;
-    let currentLength = 1;
+    if (safeSlots.length === 0) return { found: false, daysAnalyzed, threshold: maxDistortionThreshold, tickSize };
 
-    for (let i = 1; i < safeSlots.length; i++) {
-        const prevTime = safeSlots[i - 1].timeSlot.split(':').map(Number);
-        const currTime = safeSlots[i].timeSlot.split(':').map(Number);
+    let maxSequence = [];
+    let currentSequence = [];
 
-        const prevMinutes = prevTime[0] * 60 + prevTime[1];
-        const currMinutes = currTime[0] * 60 + currTime[1];
+    // Helper to check continuity of 10min slots
+    const isNextSlot = (prev, curr) => {
+        const [h1, m1] = prev.split(':').map(Number);
+        const [h2, m2] = curr.split(':').map(Number);
+        const t1 = h1 * 60 + m1;
+        const t2 = h2 * 60 + m2;
+        // Check if t2 is exactly 10 minutes after t1
+        // Also handle day wrap if needed? usually filtered by hours.
+        return t2 - t1 === 10;
+    };
 
-        if (currMinutes - prevMinutes === 10) {
-            currentLength++;
-            if (currentLength > longestLength) {
-                longestLength = currentLength;
-                longestStart = currentStart;
-            }
+    for (let i = 0; i < safeSlots.length; i++) {
+        const slot = safeSlots[i];
+        if (currentSequence.length === 0) {
+            currentSequence.push(slot);
         } else {
-            currentStart = i;
-            currentLength = 1;
+            const prev = currentSequence[currentSequence.length - 1];
+            if (isNextSlot(prev.timeSlot, slot.timeSlot)) {
+                currentSequence.push(slot);
+            } else {
+                if (currentSequence.length > maxSequence.length) {
+                    maxSequence = [...currentSequence];
+                }
+                currentSequence = [slot];
+            }
         }
     }
+    // Check last sequence
+    if (currentSequence.length > maxSequence.length) {
+        maxSequence = [...currentSequence];
+    }
 
-    // Build the result from the longest contiguous interval
-    const intervalSlots = safeSlots.slice(longestStart, longestStart + longestLength);
-    const startTime = intervalSlots[0].timeSlot;
+    if (maxSequence.length === 0) return { found: false, daysAnalyzed, threshold: maxDistortionThreshold, tickSize };
 
-    // Calculate end time (add 10 minutes to the last slot)
-    const lastSlot = intervalSlots[intervalSlots.length - 1].timeSlot.split(':').map(Number);
-    const endMinutes = lastSlot[0] * 60 + lastSlot[1] + 10;
-    const endTime = `${Math.floor(endMinutes / 60).toString().padStart(2, '0')}:${(endMinutes % 60).toString().padStart(2, '0')}`;
+    // Aggregate stats for the best interval
+    const startTime = maxSequence[0].timeSlot;
+    const lastSlot = maxSequence[maxSequence.length - 1].timeSlot;
+    // Calculate end time (start of last slot + 10 mins)
+    const [h, m] = lastSlot.split(':').map(Number);
+    const endDate = new Date();
+    endDate.setHours(h, m + 10, 0, 0);
+    const endTime = `${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}`;
 
-    // Calculate aggregate stats for the interval
-    const maxDistortionObserved = intervalSlots.map(s => s.maxDistortionObserved).reduce((a, b) => Math.max(a, b), -Infinity);
-    const avgDistortion = intervalSlots.reduce((sum, s) => sum + s.avgDistortion, 0) / intervalSlots.length;
+    const maxDistortionObserved = Math.max(...maxSequence.map(s => s.maxDistortion));
+    const avgDistortion = maxSequence.reduce((sum, s) => sum + s.avgDistortion, 0) / maxSequence.length;
 
     return {
         found: true,
         startTime,
         endTime,
-        durationMinutes: longestLength * 10,
+        durationMinutes: maxSequence.length * 10,
         maxDistortionObserved: Math.round(maxDistortionObserved * 10) / 10,
         avgDistortion: Math.round(avgDistortion * 10) / 10,
         daysAnalyzed,
-        threshold: maxDistortionThreshold
+        threshold: maxDistortionThreshold,
+        tickSize
     };
 };
