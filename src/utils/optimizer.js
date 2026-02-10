@@ -7,9 +7,10 @@ import { simulateBacktest } from './simulation';
  * @param {Array} data - Historical data
  * @param {number} smaPeriod - Selected SMA
  * @param {number} maxStopLossTicks - Maximum allowed drawdown in ticks
+ * @param {number} timezoneOffset - Data timezone shift in hours
  * @returns {Array} Top 3 best configurations
  */
-export const findBestStrategy = (data, smaPeriod, maxStopLossTicks = 300) => {
+export const findBestStrategy = (data, smaPeriod, maxStopLossTicks = 300, timezoneOffset = 0) => {
     if (!data || data.length === 0) return [];
 
     // Define search space
@@ -57,7 +58,8 @@ export const findBestStrategy = (data, smaPeriod, maxStopLossTicks = 300) => {
                         startTime: time.start,
                         endTime: time.end,
                         requireTouchAndGo: true, // Always ON for safety as requested
-                        multiplier: grid.multiplier
+                        multiplier: grid.multiplier,
+                        timezoneOffset // Pass timezone shift
                     };
 
                     const simResult = simulateBacktest(data, config);

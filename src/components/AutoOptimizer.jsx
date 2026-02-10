@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Target, TrendingUp, AlertTriangle, Play, CheckCircle, ArrowRight, Loader } from 'lucide-react';
 import { findBestStrategy } from '../utils/optimizer';
 
-export function AutoOptimizer({ data, selectedSMA, onApplyStrategy }) {
+export function AutoOptimizer({ data, selectedSMA, onApplyStrategy, timezoneOffset }) {
     const [isOptimizing, setIsOptimizing] = useState(false);
     const [bestStrategies, setBestStrategies] = useState(null);
     const [maxStopLoss, setMaxStopLoss] = useState(300);
@@ -12,7 +12,7 @@ export function AutoOptimizer({ data, selectedSMA, onApplyStrategy }) {
         setIsOptimizing(true);
         // Use timeout to allow UI to update (show loader) before heavy calculation
         setTimeout(() => {
-            const results = findBestStrategy(data, selectedSMA, maxStopLoss);
+            const results = findBestStrategy(data, selectedSMA, maxStopLoss, timezoneOffset);
             setBestStrategies(results);
             setIsOptimizing(false);
         }, 100);

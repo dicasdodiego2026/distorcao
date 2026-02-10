@@ -186,15 +186,25 @@ export const calculateDistortions = (bars, smaPer10, smaPer25, smaPer50) => {
         const sma25 = smaPer25[index];
         const sma50 = smaPer50[index];
 
+        // Standard distortion (based on Close relative to SMA) - Keep for compatibility/charts
         const getDistortion = (sma, priceBar) => {
             if (sma === null) return null;
-            // Distortion = Price - SMA
-            // We use High if above SMA, Low if below SMA
             if (priceBar.close >= sma) {
                 return (priceBar.high - sma) / priceBar.tick_size;
             } else {
                 return (priceBar.low - sma) / priceBar.tick_size;
             }
+        };
+
+        // Absolute Max/Min Distortion (for accurate simulation)
+        const getHighDistortion = (sma, priceBar) => {
+            if (sma === null) return null;
+            return (priceBar.high - sma) / priceBar.tick_size;
+        };
+
+        const getLowDistortion = (sma, priceBar) => {
+            if (sma === null) return null;
+            return (priceBar.low - sma) / priceBar.tick_size;
         };
 
         return {
@@ -203,8 +213,16 @@ export const calculateDistortions = (bars, smaPer10, smaPer25, smaPer50) => {
             sma25,
             sma50,
             dist10: getDistortion(sma10, bar),
+            dist10_high: getHighDistortion(sma10, bar),
+            dist10_low: getLowDistortion(sma10, bar),
+
             dist25: getDistortion(sma25, bar),
+            dist25_high: getHighDistortion(sma25, bar),
+            dist25_low: getLowDistortion(sma25, bar),
+
             dist50: getDistortion(sma50, bar),
+            dist50_high: getHighDistortion(sma50, bar),
+            dist50_low: getLowDistortion(sma50, bar),
         };
     });
 };

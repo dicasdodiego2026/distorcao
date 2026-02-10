@@ -6,7 +6,7 @@ import {
 import { Play, Settings, TrendingUp, AlertTriangle, DollarSign, Activity, RefreshCw } from 'lucide-react';
 import { simulateBacktest } from '../utils/simulation';
 
-export function StrategySimulator({ data, selectedSMA, strategyToLoad }) {
+export function StrategySimulator({ data, selectedSMA, strategyToLoad, timezoneOffset }) {
     // Config State
     const [config, setConfig] = useState({
         smaPeriod: selectedSMA || 25,
@@ -37,7 +37,8 @@ export function StrategySimulator({ data, selectedSMA, strategyToLoad }) {
         if (!data || data.length === 0) return;
         const simResults = simulateBacktest(data, {
             ...config,
-            smaPeriod: selectedSMA
+            smaPeriod: selectedSMA,
+            timezoneOffset // Pass timezone shift
         });
         setResults(simResults);
     };

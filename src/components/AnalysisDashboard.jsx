@@ -30,6 +30,7 @@ export function AnalysisDashboard() {
     const [safeThreshold, setSafeThreshold] = useState(150); // New: Configurable Threshold
     const [meanReversionEnabled, setMeanReversionEnabled] = useState(false); // New: Mean Reversion Filter
     const [meanReversionTolerance, setMeanReversionTolerance] = useState(10); // New: Tolerance for mean reversion
+    const [timezoneOffset, setTimezoneOffset] = useState(0); // New: Data Timezone Shift (in hours)
     const [strategyToLoad, setStrategyToLoad] = useState(null); // New: State to pass optimized strategy to simulator
     const [showTradeHistory, setShowTradeHistory] = useState(false);
 
@@ -278,6 +279,25 @@ export function AnalysisDashboard() {
                                         Filtra horários onde o preço pega tendência e não volta para a média (evita stops).
                                     </p>
                                 </div>
+
+                                <div className="border-t border-slate-800 pt-4">
+                                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3 block">Ajuste de Fuso Horário</label>
+                                    <div className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-md px-2">
+                                        <Clock className="w-4 h-4 text-slate-400" />
+                                        <select
+                                            value={timezoneOffset}
+                                            onChange={(e) => setTimezoneOffset(Number(e.target.value))}
+                                            className="bg-transparent text-white text-sm p-2 outline-none w-32"
+                                            title="Ajuste o horário dos dados (ex: se dados em UTC e você quer BRT, use -3)"
+                                        >
+                                            <option value="0">Dados: Local/Original</option>
+                                            <option value="-3">UTC-3 (Brasília)</option>
+                                            <option value="3">UTC+3 (Moscow)</option>
+                                            <option value="-4">UTC-4 (NY)</option>
+                                            <option value="-5">UTC-5 (Chicago)</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Stat Cards */}
@@ -455,8 +475,8 @@ export function AnalysisDashboard() {
 
                         {/* Strategy Simulator Section */}
                         <div className="border-t border-slate-800 pt-8 space-y-8">
-                            <AutoOptimizer data={data} selectedSMA={selectedSMA} onApplyStrategy={setStrategyToLoad} />
-                            <StrategySimulator data={data} selectedSMA={selectedSMA} strategyToLoad={strategyToLoad} />
+                            <AutoOptimizer data={data} selectedSMA={selectedSMA} timezoneOffset={timezoneOffset} onApplyStrategy={setStrategyToLoad} />
+                            <StrategySimulator data={data} selectedSMA={selectedSMA} timezoneOffset={timezoneOffset} strategyToLoad={strategyToLoad} />
                         </div>
 
                         {/* Strategy Recommendations */}
