@@ -103,7 +103,9 @@ const parseCSVData = (content) => {
         return [];
     }
 
-    const bars = [];
+    // First pass: Parse basic data without tick_size
+    // We need to collect prices to infer tick_size
+    const tempBars = [];
 
     for (let i = 1; i < lines.length; i++) {
         // Skip duplicate header lines from concatenated CSV files
@@ -121,23 +123,51 @@ const parseCSVData = (content) => {
 
             if (isNaN(timestamp.getTime())) continue;
 
-            bars.push({
+            const close = Number(cols[closeIdx]);
+
+            tempBars.push({
                 timestamp,
                 open: Number(cols[openIdx]),
                 high: Number(cols[highIdx]),
                 low: Number(cols[lowIdx]),
-                close: Number(cols[closeIdx]),
+                close: close,
                 volume: volIdx !== -1 ? Number(cols[volIdx]) : 0,
-                tick_size: 0.1, // Defaulting to RTY 0.1 as per request for this parser
-                direcao: undefined
+                // tick_size will be set later
             });
         } catch (e) {
             console.warn(`Failed to parse CSV line ${i}:`, e);
         }
     }
 
-    console.log(`📊 Parsed ${bars.length} bars from CSV`);
-    return bars.sort((a, b) => a.timestamp - b.timestamp);
+    // Auto-detect Tick Size
+    let minDiff = Infinity;
+    // Check first 1000 bars or all
+    const checkLimit = Math.min(tempBars.length, 1000);
+
+    for (let i = 1; i < checkLimit; i++) {
+        const diff = Math.abs(tempBars[i].close - tempBars[i - 1].close);
+        // Ignore zero diffs and potential floating point noise (< 0.000001)
+        if (diff > 0.0000001 && diff < minDiff) {
+            minDiff = diff;
+        }
+    }
+
+    // Fallback if no movement or error
+    if (minDiff === Infinity) minDiff = 0.1; // Fallback default
+
+    // Normalize tick size (e.g. 4.999999 -> 5, 0.099999 -> 0.1)
+    // Common ticks: 0.01, 0.00001, 0.1, 0.25, 0.5, 1, 5, 10
+    // Simple rounding strategy?
+    // Let's keep minDiff but handle float precision
+    const detectedTickSize = parseFloat(minDiff.toPrecision(6)); // Clean precision
+
+    console.log(`📊 Detected Tick Size: ${detectedTickSize}`);
+
+    // Apply tick_size to all bars and Finalize
+    return tempBars.map(b => ({
+        ...b,
+        tick_size: detectedTickSize
+    })).sort((a, b) => a.timestamp - b.timestamp);
 };
 
 
@@ -158,7 +188,7 @@ const mapBarData = (data) => {
         low: Number(bar.low),
         close: Number(bar.close),
         volume: Number(bar.volume),
-        tick_size: Number(bar.tick_size || data.tick_size || 0.5), // fallback
+        tick_size: bar.tick_size ? Number(bar.tick_size) : undefined, // No hardcoded fallback here
         direcao: bar.direcao
     };
 };

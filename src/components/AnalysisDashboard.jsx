@@ -158,9 +158,17 @@ export function AnalysisDashboard() {
                             Distorção Analytics
                         </h1>
                     </div>
-                    <div className="text-sm text-slate-400 flex items-center gap-2">
-                        <Clock className="w-4 h-4" />
-                        <span>v1.2.0 • Dark Mode</span>
+                    <div className="text-sm text-slate-400 flex items-center gap-4">
+                        {data.length > 0 && (
+                            <div className="flex items-center gap-2 bg-slate-800/50 px-3 py-1.5 rounded-full border border-slate-700/50 animate-in fade-in">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                <span className="font-mono font-bold text-slate-200">Tick: {data[0]?.tick_size}</span>
+                            </div>
+                        )}
+                        <div className="flex items-center gap-2 opacity-50">
+                            <Clock className="w-4 h-4" />
+                            <span>v1.2.1</span>
+                        </div>
                     </div>
                 </div>
             </header>
