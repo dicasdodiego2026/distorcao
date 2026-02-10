@@ -139,34 +139,14 @@ const parseCSVData = (content) => {
         }
     }
 
-    // Auto-detect Tick Size
-    let minDiff = Infinity;
-    // Check first 1000 bars or all
-    const checkLimit = Math.min(tempBars.length, 1000);
-
-    for (let i = 1; i < checkLimit; i++) {
-        const diff = Math.abs(tempBars[i].close - tempBars[i - 1].close);
-        // Ignore zero diffs and potential floating point noise (< 0.000001)
-        if (diff > 0.0000001 && diff < minDiff) {
-            minDiff = diff;
-        }
-    }
-
-    // Fallback if no movement or error
-    if (minDiff === Infinity) minDiff = 0.1; // Fallback default
-
-    // Normalize tick size (e.g. 4.999999 -> 5, 0.099999 -> 0.1)
-    // Common ticks: 0.01, 0.00001, 0.1, 0.25, 0.5, 1, 5, 10
-    // Simple rounding strategy?
-    // Let's keep minDiff but handle float precision
-    const detectedTickSize = parseFloat(minDiff.toPrecision(6)); // Clean precision
-
-    console.log(`📊 Detected Tick Size: ${detectedTickSize}`);
+    // Default to RTY 0.1 as per explicit user instruction
+    const fixedTickSize = 0.1;
+    console.log(`📊 Using Fixed Tick Size: ${fixedTickSize}`);
 
     // Apply tick_size to all bars and Finalize
     return tempBars.map(b => ({
         ...b,
-        tick_size: detectedTickSize
+        tick_size: fixedTickSize
     })).sort((a, b) => a.timestamp - b.timestamp);
 };
 
@@ -188,7 +168,7 @@ const mapBarData = (data) => {
         low: Number(bar.low),
         close: Number(bar.close),
         volume: Number(bar.volume),
-        tick_size: bar.tick_size ? Number(bar.tick_size) : undefined, // No hardcoded fallback here
+        tick_size: 0.1, // HARDCODED 0.1 RTY
         direcao: bar.direcao
     };
 };
