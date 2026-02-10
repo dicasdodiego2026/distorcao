@@ -3,7 +3,8 @@ import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
     BarChart, Bar, ScatterChart, Scatter, ZAxis, ReferenceLine, ComposedChart, Area
 } from 'recharts';
-import { Upload, FileText, AlertCircle, Activity, BarChart2, TrendingUp, Clock, CheckCircle, Lightbulb, BookOpen, Target, Shield, Zap, Layers } from 'lucide-react';
+import { BarChart2, Upload, FileText, AlertCircle, CheckCircle, Activity, Info, ChevronDown, ChevronUp, BookOpen, Clock, Shield, TrendingUp, Lightbulb, Target, Zap, Layers } from 'lucide-react';
+import { StrategySimulator } from './StrategySimulator';
 import { parseLogData, calculateSMA, calculateDistortions, generateStats, aggregateByTime, findOptimalStrategy, calculateGridStrategy, findSafeTimeInterval } from '../utils/calculations';
 import { FileUpload } from './FileUpload';
 import { TradeHistoryModal } from './TradeHistoryModal';
@@ -448,6 +449,11 @@ export function AnalysisDashboard() {
                                     Se ela estiver <strong>Inclinada</strong>, opere apenas a favor da inclinação (pullbacks).
                                 </InsightCard>
                             </div>
+                        </div>
+
+                        {/* Strategy Simulator Section */}
+                        <div className="border-t border-slate-800 pt-8">
+                            <StrategySimulator data={data} selectedSMA={selectedSMA} />
                         </div>
 
                         {/* Strategy Recommendations */}
