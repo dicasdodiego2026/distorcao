@@ -917,7 +917,7 @@ export const calculateGridStrategy = (data, selectedSMA) => {
  * @returns {Object} Safe interval info or null if not found
  */
 // Re-export findSafeTimeInterval to match the new logic signature
-export const findSafeTimeInterval = (data, selectedSMA, maxDistortionThreshold = 150) => {
+export const findSafeTimeInterval = (data, selectedSMA, maxDistortionThreshold = 150, requireMeanReversion = false, meanReversionTolerance = 10) => {
     if (!data || data.length === 0) return { found: false, daysAnalyzed: 0, threshold: maxDistortionThreshold, tickSize: 0 };
 
     const distKey = `dist${selectedSMA}`;
@@ -945,19 +945,15 @@ export const findSafeTimeInterval = (data, selectedSMA, maxDistortionThreshold =
         if (!dateTimeMap[dateStr]) dateTimeMap[dateStr] = {};
         if (!dateTimeMap[dateStr][timeSlot]) {
             dateTimeMap[dateStr][timeSlot] = {
-                maxPositive: -Infinity,
-                maxNegative: Infinity,
+                maxPositive: -Infinity, // Tracks highest distortion
+                maxNegative: Infinity,  // Tracks lowest distortion (negative)
                 sum: 0,
                 count: 0
             };
         }
 
         // Validate strictly using Math.round to avoid float artifacts
-        // bar[distKey] is already In TICKS (float)
-        const roundedDistortion = Math.round(distortion * 10) / 10; // Preserving 1 decimal for display, but validation should be int logic?
-        // Actually, if tick_size is 0.25, distortion could be 10.5 ticks.
-        // User threshold is integer? "150 ticks".
-        // Let's rely on the float value but ensure we handle sign correctly.
+        const roundedDistortion = Math.round(distortion * 10) / 10;
 
         const slot = dateTimeMap[dateStr][timeSlot];
         slot.maxPositive = Math.max(slot.maxPositive, roundedDistortion);
@@ -982,12 +978,11 @@ export const findSafeTimeInterval = (data, selectedSMA, maxDistortionThreshold =
 
         allDates.forEach(dateStr => {
             const slotData = dateTimeMap[dateStr]?.[timeSlot];
-            if (!slotData) return; // No data for this slot on this day, skip check for this day
+            if (!slotData) return; // No data for this slot on this day
 
             daysWithData++;
 
             // Strict validation: Absolute distortion must NOT exceed threshold
-            // We check both maxPositive and maxNegative (which is negative number, so taking abs)
             if (slotData.maxPositive > maxDistortionThreshold || Math.abs(slotData.maxNegative) > maxDistortionThreshold) {
                 isValidAcrossAllDays = false;
             }
@@ -999,9 +994,7 @@ export const findSafeTimeInterval = (data, selectedSMA, maxDistortionThreshold =
             totalCount += slotData.count;
         });
 
-        // Rule: Must be safe in ALL analyzed days that have data
-        // Rule: Must have data for at least 50% of analyzed days to be considered a valid pattern
-        // (Avoids identifying "safe" slot just because only 1 day had data for it)
+        // Only consider slots that have data for at least 50% of days
         if (isValidAcrossAllDays && daysWithData >= Math.ceil(daysAnalyzed * 0.5)) {
             safeSlots.push({
                 timeSlot,
@@ -1014,39 +1007,92 @@ export const findSafeTimeInterval = (data, selectedSMA, maxDistortionThreshold =
     // Step 3: Find the longest contiguous interval
     if (safeSlots.length === 0) return { found: false, daysAnalyzed, threshold: maxDistortionThreshold, tickSize };
 
+    // Helper: Verify Mean Reversion for a candidate sequence (interval)
+    const checkMeanReversion = (sequence) => {
+        if (!requireMeanReversion) return true;
+
+        // Check if across all days, the price effectively returns to the mean region within this interval
+        // Logic: For each day, look at the combined maxPositive and maxNegative across all slots in the sequence.
+        // If (GlobalMin > tolerance) OR (GlobalMax < -tolerance), it means price stayed away from mean all time.
+
+        for (const dateStr of allDates) {
+            let dayGlobalMax = -Infinity;
+            let dayGlobalMin = Infinity;
+            let hasDataForAnySlot = false;
+
+            for (const slot of sequence) {
+                const slotData = dateTimeMap[dateStr]?.[slot.timeSlot];
+                if (slotData) {
+                    hasDataForAnySlot = true;
+                    dayGlobalMax = Math.max(dayGlobalMax, slotData.maxPositive);
+                    dayGlobalMin = Math.min(dayGlobalMin, slotData.maxNegative);
+                }
+            }
+
+            if (!hasDataForAnySlot) continue; // Skip day if no data in interval
+
+            // Check if day strictly stayed above tolerance
+            if (dayGlobalMin > meanReversionTolerance) return false;
+
+            // Check if day strictly stayed below -tolerance
+            if (dayGlobalMax < -meanReversionTolerance) return false;
+        }
+
+        return true;
+    };
+
+
     let maxSequence = [];
     let currentSequence = [];
 
-    // Helper to check continuity of 10min slots
     const isNextSlot = (prev, curr) => {
         const [h1, m1] = prev.split(':').map(Number);
         const [h2, m2] = curr.split(':').map(Number);
         const t1 = h1 * 60 + m1;
         const t2 = h2 * 60 + m2;
-        // Check if t2 is exactly 10 minutes after t1
-        // Also handle day wrap if needed? usually filtered by hours.
         return t2 - t1 === 10;
     };
 
-    for (let i = 0; i < safeSlots.length; i++) {
-        const slot = safeSlots[i];
-        if (currentSequence.length === 0) {
-            currentSequence.push(slot);
-        } else {
-            const prev = currentSequence[currentSequence.length - 1];
-            if (isNextSlot(prev.timeSlot, slot.timeSlot)) {
-                currentSequence.push(slot);
+    // Modified algorithm: We need to find the longest sequence that satisfies BOTH continuity AND Mean Reversion.
+    // Since Mean Reversion depends on the *entire* interval, we can't just greedily extend. 
+    // However, if a sub-sequence fails mean reversion, a super-sequence *might* pass (if it includes the reversion point later). 
+    // BUT usually if it stays away for 10 mins, it's bad.
+    // Let's assume we want the longest Safe sequence, then validate it. If fails, try shorter?
+    // Optimization: Just finding longest contiguous "Safe Slots" first (as calculated above) is not enough because the Mean Reversion check is a global constraint on the interval.
+    // But since `safeSlots` are just candidates based on `maxDistortion`, we can iterate all contiguous chunks and check them.
+
+    // Group safeSlots into contiguous chunks
+    const chunks = [];
+    if (safeSlots.length > 0) {
+        let currentChunk = [safeSlots[0]];
+        for (let i = 1; i < safeSlots.length; i++) {
+            if (isNextSlot(currentChunk[currentChunk.length - 1].timeSlot, safeSlots[i].timeSlot)) {
+                currentChunk.push(safeSlots[i]);
             } else {
-                if (currentSequence.length > maxSequence.length) {
-                    maxSequence = [...currentSequence];
-                }
-                currentSequence = [slot];
+                chunks.push(currentChunk);
+                currentChunk = [safeSlots[i]];
             }
         }
+        chunks.push(currentChunk);
     }
-    // Check last sequence
-    if (currentSequence.length > maxSequence.length) {
-        maxSequence = [...currentSequence];
+
+    // Filter chunks by Mean Reversion
+    // If a chunk fails, we might technically be able to find a sub-chunk that passes, but simpler to just validate full chunks first. 
+    // Wait, if 10:00-11:00 fails (trend), maybe 10:00-10:30 passes (reversion happened quickly) - Unlikely if check is "stayed away".
+    // Actually, if it stayed away for 1 hour, it stayed away for 30 mins too.
+    // So if full chunk fails, sub-chunks likely fail too unless the "bad part" is at the edges.
+    // Let's just validate the longest chunks. Ideally, we return the longest VALID chunk.
+
+    for (const chunk of chunks) {
+        if (checkMeanReversion(chunk)) {
+            if (chunk.length > maxSequence.length) {
+                maxSequence = chunk;
+            }
+        } else {
+            // Fallback: This chunk is safe by Threshold, but fails Mean Reversion (Trended without return).
+            // We could try to split it? Too complex for now. User wants to AVOID these.
+            // So simply discarding is correct behavior (it's not safe).
+        }
     }
 
     if (maxSequence.length === 0) return { found: false, daysAnalyzed, threshold: maxDistortionThreshold, tickSize };
@@ -1054,7 +1100,6 @@ export const findSafeTimeInterval = (data, selectedSMA, maxDistortionThreshold =
     // Aggregate stats for the best interval
     const startTime = maxSequence[0].timeSlot;
     const lastSlot = maxSequence[maxSequence.length - 1].timeSlot;
-    // Calculate end time (start of last slot + 10 mins)
     const [h, m] = lastSlot.split(':').map(Number);
     const endDate = new Date();
     endDate.setHours(h, m + 10, 0, 0);

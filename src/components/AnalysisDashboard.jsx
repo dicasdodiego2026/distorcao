@@ -26,6 +26,8 @@ export function AnalysisDashboard() {
     const [error, setError] = useState(null);
     const [selectedSMA, setSelectedSMA] = useState(10); // 10, 25, 50
     const [safeThreshold, setSafeThreshold] = useState(150); // New: Configurable threshold
+    const [meanReversionEnabled, setMeanReversionEnabled] = useState(false); // New: Mean Reversion Filter
+    const [meanReversionTolerance, setMeanReversionTolerance] = useState(10); // New: Tolerance for mean reversion
     const [showTradeHistory, setShowTradeHistory] = useState(false);
 
     const handleDataLoaded = (content) => {
@@ -79,8 +81,8 @@ export function AnalysisDashboard() {
     // Safe Time Interval Analysis
     // Safe Time Interval Analysis
     const safeInterval = useMemo(() => {
-        return findSafeTimeInterval(data, selectedSMA, safeThreshold);
-    }, [data, selectedSMA, safeThreshold]);
+        return findSafeTimeInterval(data, selectedSMA, safeThreshold, meanReversionEnabled, meanReversionTolerance);
+    }, [data, selectedSMA, safeThreshold, meanReversionEnabled, meanReversionTolerance]);
 
     const CustomTooltip = ({ active, payload, label }) => {
         if (!active || !payload || !payload.length || !payload[0]) return null;
@@ -240,6 +242,38 @@ export function AnalysisDashboard() {
                                         />
                                         <span className="text-xs text-slate-600 font-medium">500</span>
                                     </div>
+                                </div>
+
+                                <div className="border-t border-slate-800 pt-4">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                id="meanReversion"
+                                                checked={meanReversionEnabled}
+                                                onChange={(e) => setMeanReversionEnabled(e.target.checked)}
+                                                className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                            />
+                                            <label htmlFor="meanReversion" className="text-xs font-semibold uppercase tracking-wider text-slate-500 cursor-pointer select-none">Exigir Retorno à Média</label>
+                                        </div>
+                                        {meanReversionEnabled && (
+                                            <div className="flex items-center gap-1 animate-in fade-in zoom-in duration-200">
+                                                <span className="text-xs text-slate-500">Tol:</span>
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    max="50"
+                                                    value={meanReversionTolerance}
+                                                    onChange={(e) => setMeanReversionTolerance(Number(e.target.value))}
+                                                    className="w-12 h-6 bg-slate-800 border border-slate-700 rounded text-xs text-center text-slate-300 focus:border-indigo-500 focus:outline-none"
+                                                />
+                                                <span className="text-xs text-slate-500">tks</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <p className="text-[10px] text-slate-600 mt-2 leading-tight">
+                                        Filtra horários onde o preço pega tendência e não volta para a média (evita stops).
+                                    </p>
                                 </div>
                             </div>
 
@@ -766,8 +800,15 @@ export function AnalysisDashboard() {
                                         </div>
                                         <div className="flex flex-col items-end gap-2">
                                             {safeInterval.found && (
-                                                <div className="bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-lg text-emerald-400 text-sm font-semibold">
-                                                    Padrão Encontrado ✓
+                                                <div className="bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-lg text-emerald-400 text-sm font-semibold flex items-center gap-2">
+                                                    <Shield className="w-4 h-4" />
+                                                    Padrão Seguro Encontrado
+                                                </div>
+                                            )}
+                                            {safeInterval.found && meanReversionEnabled && (
+                                                <div className="text-xs text-emerald-300/80 flex items-center gap-1 bg-emerald-500/5 px-2 py-1 rounded border border-emerald-500/10">
+                                                    <CheckCircle className="w-3 h-3" />
+                                                    Retorno à Média (Tol: {meanReversionTolerance})
                                                 </div>
                                             )}
                                             {safeInterval.tickSize > 0 && (
