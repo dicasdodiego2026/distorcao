@@ -2,7 +2,7 @@
 /**
  * Simulates a Grid Strategy on historical data
  * Uses TICK-LEVEL resolution simulated from High/Low distortions
- * Supports REVERSION and TREND strategies.
+ * EXCLUSIVELY MEAN REVERSION (Sell High, Buy Low).
  * 
  * @param {Array} data - Array of bars with distortions (dist10, dist10_high, dist10_low, etc.)
  * @param {Object} config - Configuration object
@@ -20,8 +20,7 @@ export const simulateBacktest = (data, config) => {
         endTime,
         requireTouchAndGo,
         multiplier,
-        timezoneOffset, // Shift in hours (e.g. -3, +0, +3)
-        strategyType = 'REVERSION' // 'REVERSION' or 'TREND'
+        timezoneOffset // Shift in hours (e.g. -3, +0, +3)
     } = config;
 
     const distKey = `dist${smaPeriod}`;
@@ -44,7 +43,7 @@ export const simulateBacktest = (data, config) => {
         direction: null, // 'BUY' or 'SELL'
         layers: 0,
         avgPrice: 0, // In ticks deviation
-        initialEntryPrice: 0, // To track grid relative to first entry
+        initialEntryPrice: 0,
         totalShares: 0,
         entryTime: null,
         maxAdverse: 0
@@ -86,37 +85,20 @@ export const simulateBacktest = (data, config) => {
             let unrealizedPnl = 0;
 
             if (position.direction === 'SELL') {
-                // Direction: SELL (Short)
-                // Profit if price goes DOWN (Lower distortion)
-                // Loss/Grid if price goes UP (Higher distortion)
+                // Direction: SELL (Short) - Bet on price going DOWN (Reversion from High)
 
                 const currentBad = distHigh; // High is bad for Short
-                const currentGood = distLow; // Low is good for Short
+                const currentGood = distLow; // Low is good for Short (Profit)
 
                 // Max Adverse
                 const adverse = currentBad - position.avgPrice;
                 if (adverse > position.maxAdverse) position.maxAdverse = adverse;
 
-                // CHECK GRID (ADD TO SHORT)
-                // We add if price moves AGAINST us (UP) by stepTicks from LAST LAYER? Or Initial?
-                // Let's use Simple Grid from Initial Entry to keep logic robust.
-                // Or better: From AvgPrice? No, martingale usually from entry steps.
-                // Level 1: Entry + Step 1.
-                // Level 2: Entry + Step 1 + Step 2? (Linear steps: Entry + N*Step)
+                // CHECK GRID (ADD TO SHORT) - If price goes HIGHER (Against us)
                 if (position.layers < maxLayers) {
-
-                    // Determine trigger level for next layer
-                    // If we are Short, we add higher.
-                    // But if this is TREND strategy (Sell Low), "Higher" means closer to 0 (Pullback).
-                    // If this is REVERSION strategy (Sell High), "Higher" means further from 0.
-                    // Logic is strictly "Against Position".
-                    // Sell Entry at P. Grid at P + Step.
-
+                    // Reversion Sell: We entered at +20.
+                    // Grid Add: We add at +30 (Entry + Step).
                     const nextGridLevel = position.initialEntryPrice + (position.layers * stepTicks);
-
-                    // Note: If we entered at -20 (Trend Sell), next level is -20 + 10 = -10.
-                    // If we entered at +20 (Reversion Sell), next level is 20 + 10 = 30.
-                    // Logic holds: We sell more if price rises.
 
                     if (currentBad >= nextGridLevel) {
                         const layerPrice = nextGridLevel;
@@ -130,8 +112,7 @@ export const simulateBacktest = (data, config) => {
                     }
                 }
 
-                // CHECK EXIT (PROFIT)
-                // Target is AvgPrice - TargetTicks (Lower)
+                // CHECK EXIT (PROFIT) - If price goes LOWER (With us)
                 const targetPrice = position.avgPrice - targetTicks;
 
                 if (currentGood <= targetPrice) {
@@ -142,7 +123,6 @@ export const simulateBacktest = (data, config) => {
                         entryTime: position.entryTime,
                         exitTime: bar.timestamp,
                         direction: 'SELL',
-                        type: strategyType,
                         profit: totalPnl,
                         layers: position.layers,
                         maxDrawdown: position.maxAdverse
@@ -154,23 +134,19 @@ export const simulateBacktest = (data, config) => {
                 }
 
             } else { // BUY
-                // Direction: BUY (Long)
-                // Profit if price goes UP (Higher)
-                // Loss/Grid if price goes DOWN (Lower)
+                // Direction: BUY (Long) - Bet on price going UP (Reversion from Low)
 
                 const currentBad = distLow; // Low is bad for Long
-                const currentGood = distHigh; // High is good for Long
+                const currentGood = distHigh; // High is good for Long (Profit)
 
                 const adverse = position.avgPrice - currentBad;
                 if (adverse > position.maxAdverse) position.maxAdverse = adverse;
 
-                // Grid (Add to Long)
-                // Add if price drops by Step
+                // Grid (Add to Long) - If price goes LOWER (Against us)
                 if (position.layers < maxLayers) {
+                    // Reversion Buy: We entered at -20.
+                    // Grid Add: We add at -30 (Entry - Step).
                     const nextGridLevel = position.initialEntryPrice - (position.layers * stepTicks);
-                    // If entered at +20 (Trend Buy), next is 10.
-                    // If entered at -20 (Reversion Buy), next is -30.
-                    // Logic holds: We buy more if price drops.
 
                     if (currentBad <= nextGridLevel) {
                         const layerPrice = nextGridLevel;
@@ -184,7 +160,7 @@ export const simulateBacktest = (data, config) => {
                     }
                 }
 
-                // Exit
+                // Exit (Profit) - If price goes HIGHER (With us)
                 const targetPrice = position.avgPrice + targetTicks;
                 if (currentGood >= targetPrice) {
                     const pnlPerShare = targetTicks;
@@ -194,7 +170,6 @@ export const simulateBacktest = (data, config) => {
                         entryTime: position.entryTime,
                         exitTime: bar.timestamp,
                         direction: 'BUY',
-                        type: strategyType,
                         profit: totalPnl,
                         layers: position.layers,
                         maxDrawdown: position.maxAdverse
@@ -212,37 +187,27 @@ export const simulateBacktest = (data, config) => {
 
             if (currentMinutes >= startMinutes && currentMinutes < endMinutes) {
 
-                // Signal Checks
-                let signal = null; // 'BUY' or 'SELL'
-                let entryPrice = 0;
+                // MEAN REVERSION LOGIC ONLY
+                // Sell High, Buy Low
 
-                if (strategyType === 'REVERSION') {
-                    // Reversion: Sell High, Buy Low
-                    if (distHigh >= entryTicks) {
-                        signal = 'SELL';
-                        entryPrice = entryTicks;
-                    } else if (distLow <= -entryTicks) {
-                        signal = 'BUY';
-                        entryPrice = -entryTicks;
-                    }
-                } else {
-                    // Trend: Buy High (Breakout), Sell Low (Breakdown)
-                    if (distHigh >= entryTicks) {
-                        signal = 'BUY'; // BREAKOUT UP
-                        entryPrice = entryTicks;
-                    } else if (distLow <= -entryTicks) {
-                        signal = 'SELL'; // BREAKDOWN DOWN
-                        entryPrice = -entryTicks;
-                    }
-                }
-
-                if (signal) {
+                if (distHigh >= entryTicks) {
                     position = {
                         active: true,
-                        direction: signal,
+                        direction: 'SELL',
                         layers: 1,
-                        avgPrice: entryPrice,
-                        initialEntryPrice: entryPrice,
+                        avgPrice: entryTicks,
+                        initialEntryPrice: entryTicks,
+                        totalShares: 1,
+                        entryTime: bar.timestamp,
+                        maxAdverse: 0
+                    };
+                } else if (distLow <= -entryTicks) {
+                    position = {
+                        active: true,
+                        direction: 'BUY',
+                        layers: 1,
+                        avgPrice: -entryTicks,
+                        initialEntryPrice: -entryTicks,
                         totalShares: 1,
                         entryTime: bar.timestamp,
                         maxAdverse: 0
@@ -253,7 +218,7 @@ export const simulateBacktest = (data, config) => {
     }
 
     return {
-        strategyType,
+        strategyType: 'REVERSION',
         totalTrades: trades.length,
         totalProfit: equity,
         winRate: trades.length > 0 ? trades.filter(t => t.profit > 0).length / trades.length : 0,
