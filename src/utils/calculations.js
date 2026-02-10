@@ -2,6 +2,14 @@
 export const parseLogData = (fileContent) => {
     if (!fileContent) return [];
 
+    // --- CSV/TSV Detection (e.g. MetaTrader RTY data) ---
+    // Format: <DATE>\t<TIME>\t<OPEN>\t<HIGH>\t<LOW>\t<CLOSE>\t<TICKVOL>\t<VOL>\t<SPREAD>
+    const trimmedRaw = fileContent.trim();
+    if (trimmedRaw.startsWith('<DATE>') || trimmedRaw.startsWith('"<DATE>"')) {
+        console.log('📊 Detected CSV/TSV format (MetaTrader)');
+        return parseCSVData(trimmedRaw);
+    }
+
     // Pre-process: Fix locale issues (comma decimals) -> "123,45" to "123.45"
     // valid JSON numbers cannot have commas.
     const processedContent = fileContent.replace(/(\d+),(\d+)/g, '$1.$2');
@@ -65,6 +73,68 @@ export const parseLogData = (fileContent) => {
 
     return bars.sort((a, b) => a.timestamp - b.timestamp);
 };
+
+/**
+ * Parse CSV/TSV data from MetaTrader format (e.g. RTY futures)
+ * Header: <DATE>\t<TIME>\t<OPEN>\t<HIGH>\t<LOW>\t<CLOSE>\t<TICKVOL>\t<VOL>\t<SPREAD>
+ * Data:   2025.08.01\t00:00:00\t2219.6\t2220.0\t2219.2\t2219.3\t26\t26\t1
+ */
+const parseCSVData = (content) => {
+    const lines = content.split(/\r?\n/).filter(l => l.trim().length > 0);
+    if (lines.length < 2) return [];
+
+    // Detect separator: tab or semicolon
+    const separator = lines[0].includes('\t') ? '\t' : ';';
+
+    // Parse header to identify column positions
+    const headerLine = lines[0];
+    const headers = headerLine.split(separator).map(h => h.replace(/[<>"]/g, '').trim().toUpperCase());
+
+    const dateIdx = headers.indexOf('DATE');
+    const timeIdx = headers.indexOf('TIME');
+    const openIdx = headers.indexOf('OPEN');
+    const highIdx = headers.indexOf('HIGH');
+    const lowIdx = headers.indexOf('LOW');
+    const closeIdx = headers.indexOf('CLOSE');
+    const volIdx = headers.indexOf('VOL') !== -1 ? headers.indexOf('VOL') : headers.indexOf('TICKVOL');
+
+    if (dateIdx === -1 || closeIdx === -1) {
+        console.warn('CSV header missing required columns (DATE, CLOSE)');
+        return [];
+    }
+
+    const bars = [];
+    for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(separator);
+        if (cols.length < 6) continue;
+
+        try {
+            // Parse date: "2025.08.01" -> "2025-08-01"
+            const dateStr = cols[dateIdx].trim().replace(/\./g, '-');
+            const timeStr = timeIdx !== -1 ? cols[timeIdx].trim() : '00:00:00';
+            const timestamp = new Date(`${dateStr}T${timeStr}`);
+
+            if (isNaN(timestamp.getTime())) continue;
+
+            bars.push({
+                timestamp,
+                open: Number(cols[openIdx]),
+                high: Number(cols[highIdx]),
+                low: Number(cols[lowIdx]),
+                close: Number(cols[closeIdx]),
+                volume: volIdx !== -1 ? Number(cols[volIdx]) : 0,
+                tick_size: 0.1, // RTY tick size
+                direcao: undefined
+            });
+        } catch (e) {
+            console.warn(`Failed to parse CSV line ${i}:`, e);
+        }
+    }
+
+    console.log(`📊 Parsed ${bars.length} bars from CSV`);
+    return bars.sort((a, b) => a.timestamp - b.timestamp);
+};
+
 
 const mapBarData = (data) => {
     // Handle both direct object (if log is just bar) or nested {barra: ...}

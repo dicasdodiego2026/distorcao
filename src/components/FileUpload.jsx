@@ -9,11 +9,11 @@ export function FileUpload({ onDataLoaded }) {
     const onDrop = useCallback((droppedFiles) => {
         setError(null);
         const validFiles = droppedFiles.filter(file =>
-            file.name.endsWith('.json') || file.name.endsWith('.txt')
+            file.name.endsWith('.json') || file.name.endsWith('.txt') || file.name.endsWith('.csv')
         );
 
         if (validFiles.length !== droppedFiles.length) {
-            setError("Alguns arquivos foram ignorados pois não são .json ou .txt");
+            setError("Alguns arquivos foram ignorados pois não são .json, .txt ou .csv");
         }
 
         setAcceptedFiles(validFiles);
@@ -41,7 +41,7 @@ export function FileUpload({ onDataLoaded }) {
 
     }, [onDataLoaded]);
 
-    const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: { 'application/json': ['.json'], 'text/plain': ['.txt'] } });
+    const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: { 'application/json': ['.json'], 'text/plain': ['.txt'], 'text/csv': ['.csv'] } });
 
     return (
         <div className="w-full">
@@ -68,7 +68,7 @@ export function FileUpload({ onDataLoaded }) {
                                     Arraste e solte seus logs aqui
                                 </p>
                                 <p className="text-sm text-slate-500 group-hover:text-slate-400 transition-colors">
-                                    Suporta múltiplos arquivos .json
+                                    Suporta múltiplos arquivos .json e .csv
                                 </p>
                             </>
                         )}
