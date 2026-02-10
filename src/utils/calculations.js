@@ -214,8 +214,8 @@ export const generateStats = (data, selectedSMA) => {
     if (validData.length === 0) return null;
 
     const distortions = validData.map(d => d[`dist${selectedSMA}`]);
-    const maxDistortion = Math.max(...distortions);
-    const minDistortion = Math.min(...distortions);
+    const maxDistortion = distortions.reduce((a, b) => Math.max(a, b), -Infinity);
+    const minDistortion = distortions.reduce((a, b) => Math.min(a, b), Infinity);
     const avgDistortion = distortions.reduce((a, b) => a + Math.abs(b), 0) / distortions.length;
 
     const histogram = {};
@@ -269,7 +269,7 @@ export const aggregateByTime = (data, selectedSMA) => {
     return Object.keys(buckets).sort().map(timeLabel => {
         const dists = buckets[timeLabel].distortions;
         const avg = dists.reduce((a, b) => a + b, 0) / dists.length;
-        const max = Math.max(...dists);
+        const max = dists.reduce((a, b) => Math.max(a, b), -Infinity);
 
         return {
             time: timeLabel,
@@ -290,7 +290,7 @@ export const findOptimalStrategy = (data, selectedSMA) => {
 
     if (distortions.length === 0) return null;
 
-    const maxVal = Math.max(...distortions);
+    const maxVal = distortions.reduce((a, b) => Math.max(a, b), -Infinity);
     // Generate thresholds every 5 ticks
     const thresholds = [];
     for (let t = 5; t < maxVal; t += 5) thresholds.push(t);
@@ -384,8 +384,8 @@ export const calculateGridStrategy = (data, selectedSMA) => {
 
     // Debug: Check distortion range
     const distValues = distortions.map(d => d.val);
-    const minDist = Math.min(...distValues);
-    const maxDist = Math.max(...distValues);
+    const minDist = distValues.reduce((a, b) => Math.min(a, b), Infinity);
+    const maxDist = distValues.reduce((a, b) => Math.max(a, b), -Infinity);
     const negativeCount = distValues.filter(v => v < 0).length;
     const positiveCount = distValues.filter(v => v > 0).length;
     console.log(`📊 Distortion Analysis:`);
@@ -1042,7 +1042,7 @@ export const findSafeTimeInterval = (data, selectedSMA, maxDistortionThreshold =
     const endTime = `${Math.floor(endMinutes / 60).toString().padStart(2, '0')}:${(endMinutes % 60).toString().padStart(2, '0')}`;
 
     // Calculate aggregate stats for the interval
-    const maxDistortionObserved = Math.max(...intervalSlots.map(s => s.maxDistortionObserved));
+    const maxDistortionObserved = intervalSlots.map(s => s.maxDistortionObserved).reduce((a, b) => Math.max(a, b), -Infinity);
     const avgDistortion = intervalSlots.reduce((sum, s) => sum + s.avgDistortion, 0) / intervalSlots.length;
 
     return {
