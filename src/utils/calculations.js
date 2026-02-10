@@ -105,6 +105,10 @@ const parseCSVData = (content) => {
 
     const bars = [];
     for (let i = 1; i < lines.length; i++) {
+        // Skip duplicate header lines from concatenated CSV files
+        const trimmedLine = lines[i].trim();
+        if (trimmedLine.startsWith('<DATE>') || trimmedLine.startsWith('"<DATE>"')) continue;
+
         const cols = lines[i].split(separator);
         if (cols.length < 6) continue;
 
