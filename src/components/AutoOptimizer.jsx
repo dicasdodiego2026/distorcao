@@ -76,6 +76,12 @@ export function AutoOptimizer({ data, selectedSMA, onApplyStrategy, timezoneOffs
 
                                 <div className="space-y-2 mb-4 border-t border-slate-800 pt-3">
                                     <div className="flex justify-between text-sm">
+                                        <span className="text-slate-400">Tipo:</span>
+                                        <span className={`font-mono font-bold ${strategy.config.strategyType === 'TREND' ? 'text-cyan-400' : 'text-amber-400'}`}>
+                                            {strategy.config.strategyType === 'TREND' ? 'TENDÊNCIA (Rompimento)' : 'REVERSÃO (Clássica)'}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
                                         <span className="text-slate-400">Entrada:</span>
                                         <span className="text-white font-mono">{strategy.config.entryTicks} ticks</span>
                                     </div>

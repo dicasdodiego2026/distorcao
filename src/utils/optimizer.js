@@ -39,54 +39,59 @@ export const findBestStrategy = (data, smaPeriod, maxStopLossTicks = 300, timezo
         { step: 10, maxLayers: 3, multiplier: 1.5, label: 'Grid Martingale 1.5x' }
     ];
 
+    const strategyTypes = ['REVERSION', 'TREND'];
+
     const results = [];
 
     // Brute Force Search
-    // Total iterations: 7 * 5 * 5 * 2 = 350 iterations. Should be fast.
+    // Total iterations: 2 * 5 * 7 * 5 * 2 = 700 iterations. Still fast.
 
-    for (const time of timeWindows) {
-        for (const entry of entryOptions) {
-            for (const target of targetOptions) {
-                for (const grid of gridOptions) {
+    for (const type of strategyTypes) {
+        for (const time of timeWindows) {
+            for (const entry of entryOptions) {
+                for (const target of targetOptions) {
+                    for (const grid of gridOptions) {
 
-                    const config = {
-                        smaPeriod,
-                        entryTicks: entry,
-                        stepTicks: grid.step,
-                        maxLayers: grid.maxLayers,
-                        targetTicks: target,
-                        startTime: time.start,
-                        endTime: time.end,
-                        requireTouchAndGo: true, // Always ON for safety as requested
-                        multiplier: grid.multiplier,
-                        timezoneOffset // Pass timezone shift
-                    };
+                        const config = {
+                            smaPeriod,
+                            entryTicks: entry,
+                            stepTicks: grid.step,
+                            maxLayers: grid.maxLayers,
+                            targetTicks: target,
+                            startTime: time.start,
+                            endTime: time.end,
+                            requireTouchAndGo: true, // Always ON for safety as requested
+                            multiplier: grid.multiplier,
+                            timezoneOffset, // Pass timezone shift
+                            strategyType: type // New Field
+                        };
 
-                    const simResult = simulateBacktest(data, config);
+                        const simResult = simulateBacktest(data, config);
 
-                    // Filter invalid results
-                    if (!simResult || simResult.totalTrades === 0) continue;
+                        // Filter invalid results
+                        if (!simResult || simResult.totalTrades === 0) continue;
 
-                    // Hard Constraints
-                    if (simResult.maxDrawdown > maxStopLossTicks) continue; // Respect Max Stop
+                        // Hard Constraints
+                        if (simResult.maxDrawdown > maxStopLossTicks) continue; // Respect Max Stop
 
-                    // Consistency Check: Trades per Day?
-                    // We don't have exact "days with trades" count from simple simResult, 
-                    // but we can estimate or add it to simulation.js.
-                    // For now, let's assume TotalTrades / TotalDays > 0.5 (at least 1 trade every 2 days)
-                    // We need TotalDays.
-                    // Let's approximate by data range? Or just prioritize high trade count.
+                        // Consistency Check: Trades per Day?
+                        // We don't have exact "days with trades" count from simple simResult, 
+                        // but we can estimate or add it to simulation.js.
+                        // For now, let's assume TotalTrades / TotalDays > 0.5 (at least 1 trade every 2 days)
+                        // We need TotalDays.
+                        // Let's approximate by data range? Or just prioritize high trade count.
 
-                    // Score: Profit * Consistency / Drawdown?
-                    // Or simply Total Profit, provided Drawdown is low.
-                    // Let's use Profit Factor if we had it.
-                    // Let's use Total Profit for now.
+                        // Score: Profit * Consistency / Drawdown?
+                        // Or simply Total Profit, provided Drawdown is low.
+                        // Let's use Profit Factor if we had it.
+                        // Let's use Total Profit for now.
 
-                    results.push({
-                        config,
-                        ...simResult,
-                        score: simResult.totalProfit // Simple score
-                    });
+                        results.push({
+                            config,
+                            ...simResult,
+                            score: simResult.totalProfit // Simple score
+                        });
+                    }
                 }
             }
         }

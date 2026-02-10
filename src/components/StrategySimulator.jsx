@@ -110,6 +110,17 @@ export function StrategySimulator({ data, selectedSMA, strategyToLoad, timezoneO
                         </h3>
                         <div className="grid grid-cols-2 gap-2">
                             <div>
+                                <label className="text-xs font-semibold uppercase text-slate-500 mb-1 block">Tipo de Estratégia</label>
+                                <select
+                                    value={config.strategyType || 'REVERSION'}
+                                    onChange={(e) => setConfig({ ...config, strategyType: e.target.value })}
+                                    className="w-full bg-slate-900 border border-slate-700 text-white text-sm rounded p-2 focus:ring-indigo-500"
+                                >
+                                    <option value="REVERSION">Reversão à Média (Clássica)</option>
+                                    <option value="TREND">Seguir Tendência (Rompimento)</option>
+                                </select>
+                            </div>
+                            <div>
                                 <label className="text-xs text-slate-500 block mb-1">Passo (Ticks)</label>
                                 <input
                                     type="number"
