@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import { BarChart2, Upload, FileText, AlertCircle, CheckCircle, Activity, Info, ChevronDown, ChevronUp, BookOpen, Clock, Shield, TrendingUp, Lightbulb, Target, Zap, Layers } from 'lucide-react';
 import { StrategySimulator } from './StrategySimulator';
+import { AutoOptimizer } from './AutoOptimizer';
 import { parseLogData, calculateSMA, calculateDistortions, generateStats, aggregateByTime, findOptimalStrategy, calculateGridStrategy, findSafeTimeInterval } from '../utils/calculations';
 import { FileUpload } from './FileUpload';
 import { TradeHistoryModal } from './TradeHistoryModal';
@@ -26,9 +27,10 @@ export function AnalysisDashboard() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [selectedSMA, setSelectedSMA] = useState(10); // 10, 25, 50
-    const [safeThreshold, setSafeThreshold] = useState(150); // New: Configurable threshold
+    const [safeThreshold, setSafeThreshold] = useState(150); // New: Configurable Threshold
     const [meanReversionEnabled, setMeanReversionEnabled] = useState(false); // New: Mean Reversion Filter
     const [meanReversionTolerance, setMeanReversionTolerance] = useState(10); // New: Tolerance for mean reversion
+    const [strategyToLoad, setStrategyToLoad] = useState(null); // New: State to pass optimized strategy to simulator
     const [showTradeHistory, setShowTradeHistory] = useState(false);
 
     const handleDataLoaded = (content) => {
@@ -452,8 +454,9 @@ export function AnalysisDashboard() {
                         </div>
 
                         {/* Strategy Simulator Section */}
-                        <div className="border-t border-slate-800 pt-8">
-                            <StrategySimulator data={data} selectedSMA={selectedSMA} />
+                        <div className="border-t border-slate-800 pt-8 space-y-8">
+                            <AutoOptimizer data={data} selectedSMA={selectedSMA} onApplyStrategy={setStrategyToLoad} />
+                            <StrategySimulator data={data} selectedSMA={selectedSMA} strategyToLoad={strategyToLoad} />
                         </div>
 
                         {/* Strategy Recommendations */}

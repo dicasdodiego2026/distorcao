@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     BarChart, Bar, Legend
@@ -6,7 +6,7 @@ import {
 import { Play, Settings, TrendingUp, AlertTriangle, DollarSign, Activity, RefreshCw } from 'lucide-react';
 import { simulateBacktest } from '../utils/simulation';
 
-export function StrategySimulator({ data, selectedSMA }) {
+export function StrategySimulator({ data, selectedSMA, strategyToLoad }) {
     // Config State
     const [config, setConfig] = useState({
         smaPeriod: selectedSMA || 25,
@@ -20,6 +20,16 @@ export function StrategySimulator({ data, selectedSMA }) {
         multiplier: 1.0
     });
 
+    // Load external strategy configuration (from Auto-Optimizer)
+    useEffect(() => {
+        if (strategyToLoad) {
+            setConfig(prev => ({
+                ...prev,
+                ...strategyToLoad
+            }));
+        }
+    }, [strategyToLoad]);
+
     const [results, setResults] = useState(null);
 
     // Run Simulation
@@ -27,10 +37,7 @@ export function StrategySimulator({ data, selectedSMA }) {
         if (!data || data.length === 0) return;
         const simResults = simulateBacktest(data, {
             ...config,
-            smaPeriod: selectedSMA // Ensure we use the SMA selected in parent context if passed, or config one?
-            // Actually, data contains ALL SMAs. Let's use config.smaPeriod but ensure simulation.js handles it.
-            // Wait, simulation.js expects data to have `dist${smaPeriod}`. 
-            // The `data` prop passed here should be the full dataset.
+            smaPeriod: selectedSMA
         });
         setResults(simResults);
     };
