@@ -499,7 +499,7 @@ export function AnalysisDashboard() {
                                         <div className="relative z-10">
                                             <div className="flex items-center gap-2 mb-4 text-emerald-400 font-bold uppercase tracking-wider text-sm">
                                                 <Shield className="w-4 h-4" />
-                                                Conservador
+                                                Conservador (Alta Taxa de Acerto)
                                             </div>
                                             <div className="space-y-4">
                                                 <div>
@@ -508,7 +508,7 @@ export function AnalysisDashboard() {
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-4">
                                                     <div>
-                                                        <span className="text-slate-500 text-xs uppercase font-bold">Take Profit</span>
+                                                        <span className="text-slate-500 text-xs uppercase font-bold">Alvo (Target)</span>
                                                         <p className="text-lg font-bold text-emerald-400">{strategies.conservative.profit} ticks</p>
                                                     </div>
                                                     <div>
@@ -516,10 +516,15 @@ export function AnalysisDashboard() {
                                                         <p className="text-lg font-bold text-rose-400">{strategies.conservative.suggestedStop} ticks</p>
                                                     </div>
                                                 </div>
-                                                <div className="pt-4 border-t border-slate-800">
-                                                    <p className="text-xs text-slate-400">
-                                                        Taxa de acerto estimada alta, mas ocorre com menor frequência ({strategies.conservative.count} oportunidades).
-                                                    </p>
+                                                <div className="pt-4 border-t border-slate-800 flex justify-between items-center">
+                                                    <div>
+                                                        <span className="text-xs text-slate-500 block">Taxa de Acerto</span>
+                                                        <span className="text-sm font-bold text-slate-300">{(strategies.conservative.winRate * 100).toFixed(1)}%</span>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <span className="text-xs text-slate-500 block">Lucro Total</span>
+                                                        <span className="text-sm font-bold text-emerald-400">+{strategies.conservative.totalProfit} ticks</span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -542,7 +547,7 @@ export function AnalysisDashboard() {
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-4">
                                                     <div>
-                                                        <span className="text-slate-400 text-xs uppercase font-bold">Take Profit</span>
+                                                        <span className="text-slate-400 text-xs uppercase font-bold">Alvo (Target)</span>
                                                         <p className="text-xl font-bold text-emerald-400">{strategies.balanced.profit} ticks</p>
                                                     </div>
                                                     <div>
@@ -550,10 +555,15 @@ export function AnalysisDashboard() {
                                                         <p className="text-xl font-bold text-rose-400">{strategies.balanced.suggestedStop} ticks</p>
                                                     </div>
                                                 </div>
-                                                <div className="pt-4 border-t border-slate-700">
-                                                    <p className="text-xs text-slate-300">
-                                                        Melhor equilíbrio entre risco e retorno. Ocorreu {strategies.balanced.count} vezes no período analisado.
-                                                    </p>
+                                                <div className="pt-4 border-t border-slate-700 flex justify-between items-center">
+                                                    <div>
+                                                        <span className="text-xs text-slate-400 block">Taxa de Acerto</span>
+                                                        <span className="text-lg font-bold text-white">{(strategies.balanced.winRate * 100).toFixed(1)}%</span>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <span className="text-xs text-slate-400 block">Lucro Total</span>
+                                                        <span className="text-lg font-bold text-emerald-400">+{strategies.balanced.totalProfit} ticks</span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -567,7 +577,7 @@ export function AnalysisDashboard() {
                                         <div className="relative z-10">
                                             <div className="flex items-center gap-2 mb-4 text-amber-400 font-bold uppercase tracking-wider text-sm">
                                                 <Zap className="w-4 h-4" />
-                                                Agressivo
+                                                Agressivo (Maior Lucro)
                                             </div>
                                             <div className="space-y-4">
                                                 <div>
@@ -576,7 +586,7 @@ export function AnalysisDashboard() {
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-4">
                                                     <div>
-                                                        <span className="text-slate-500 text-xs uppercase font-bold">Take Profit</span>
+                                                        <span className="text-slate-500 text-xs uppercase font-bold">Alvo (Target)</span>
                                                         <p className="text-lg font-bold text-emerald-400">{strategies.aggressive.profit} ticks</p>
                                                     </div>
                                                     <div>
@@ -584,10 +594,15 @@ export function AnalysisDashboard() {
                                                         <p className="text-lg font-bold text-rose-400">{strategies.aggressive.suggestedStop} ticks</p>
                                                     </div>
                                                 </div>
-                                                <div className="pt-4 border-t border-slate-800">
-                                                    <p className="text-xs text-slate-400">
-                                                        Alta frequência ({strategies.aggressive.count} trades), mas exige stop loss maior devido à volatilidade nessa faixa.
-                                                    </p>
+                                                <div className="pt-4 border-t border-slate-800 flex justify-between items-center">
+                                                    <div>
+                                                        <span className="text-xs text-slate-500 block">Taxa de Acerto</span>
+                                                        <span className="text-sm font-bold text-slate-300">{(strategies.aggressive.winRate * 100).toFixed(1)}%</span>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <span className="text-xs text-slate-500 block">Lucro Total</span>
+                                                        <span className="text-sm font-bold text-emerald-400">+{strategies.aggressive.totalProfit} ticks</span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>

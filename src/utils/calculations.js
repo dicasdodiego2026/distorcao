@@ -312,77 +312,201 @@ export const aggregateByTime = (data, selectedSMA) => {
 export const findOptimalStrategy = (data, selectedSMA) => {
     if (!data || data.length === 0) return null;
 
-    const distKey = `dist${selectedSMA}`;
-    const distortions = data
-        .filter(d => d[distKey] !== null)
-        .map(d => Math.abs(d[distKey]));
+    const distHighKey = `dist${selectedSMA}_high`;
+    const distLowKey = `dist${selectedSMA}_low`;
 
-    if (distortions.length === 0) return null;
+    // Check if high/low distortion data exists first
+    if (data[0][distHighKey] === undefined) {
+        console.warn("Intraday distortion data missing. Optimization might be inaccurate.");
+        return null;
+    }
 
-    const maxVal = distortions.reduce((a, b) => Math.max(a, b), -Infinity);
-    // Generate thresholds every 5 ticks
+    // Determine max distortion to set search range
+    let maxDist = 0;
+    for (let i = 0; i < data.length; i++) {
+        const h = Math.abs(data[i][distHighKey] || 0);
+        const l = Math.abs(data[i][distLowKey] || 0);
+        maxDist = Math.max(maxDist, h, l);
+    }
+
+    // Generate thresholds: Step 5 ticks up to max
     const thresholds = [];
-    for (let t = 5; t < maxVal; t += 5) thresholds.push(t);
+    for (let t = 10; t < maxDist; t += 5) thresholds.push(t);
+
+    // Stop Loss Multipliers to test: 0.5x, 1.0x, 1.5x, 2.0x of the Entry Threshold
+    const stopMultipliers = [0.5, 1.0, 1.5, 2.0];
 
     const results = [];
 
+    // Brute-force simulation
+    // Ideally O(Thresholds * StopMults * Bars). JS handles 1M ops fine.
+
     thresholds.forEach(threshold => {
-        let count = 0;
-        let totalMAE = 0; // Max Adverse Excursion (drawdown)
+        stopMultipliers.forEach(stopMult => {
+            const stopDistance = Math.ceil(threshold * stopMult);
 
-        let inTrade = false;
-        let entryPrice = 0; // Conceptual 'distortion' level
-        let peakDistortion = 0;
+            let wins = 0;
+            let losses = 0;
+            let totalProfitTicks = 0;
+            let maxDrawdown = 0; // Peak-to-valley equity curve
+            let currentDrawdown = 0;
 
-        // Iterate through time series to simulate trades
-        for (let i = 0; i < data.length; i++) {
-            const val = Math.abs(data[i][distKey]);
-            if (!val && val !== 0) continue;
+            let inTrade = false;
+            let position = 0; // 1 (Short at Top), -1 (Long at Bottom)
+            let entryPrice = 0; // Price at entry (approximation)
+            // Actually we simulate based on distortion levels directly since it's mean reversion.
 
-            if (!inTrade && val >= threshold) {
-                // Enter Reward: Reversion to 0 (Profit = threshold)
-                inTrade = true;
-                peakDistortion = val;
-                count++;
-            }
+            // Trade State
+            let entryDistortion = 0;
+            let tradePeakDist = 0;
 
-            if (inTrade) {
-                if (val > peakDistortion) peakDistortion = val;
+            for (let i = 0; i < data.length; i++) {
+                const bar = data[i];
+                // Skip invalid bars
+                if (bar[distHighKey] === null) continue;
 
-                // Exit: Reversion near 0 (e.g. < 20% of threshold or < 2 ticks)
-                if (val < 2) {
-                    inTrade = false;
-                    // Drawdown = Peak - Entry
-                    totalMAE += (peakDistortion - threshold);
+                const distH = bar[distHighKey];
+                const distL = bar[distLowKey];
+
+                if (!inTrade) {
+                    // Check for entry
+                    // Sell (Short) if Dist > Threshold
+                    if (distH >= threshold) {
+                        inTrade = true;
+                        position = 1; // Short
+                        entryDistortion = threshold; // We enter exactly at threshold (limit order assumption)
+                        tradePeakDist = distH;
+                        // Check if stopped out in same bar? 
+                        // If High > Threshold + Stop? 
+                        // Worst case: High happened after entry.
+                        if (distH >= threshold + stopDistance) {
+                            losses++;
+                            totalProfitTicks -= stopDistance;
+                            inTrade = false;
+                        }
+                    }
+                    // Buy (Long) if Dist < -Threshold
+                    else if (distL <= -threshold) {
+                        inTrade = true;
+                        position = -1; // Long
+                        entryDistortion = -threshold;
+                        // Check stop in same bar
+                        if (distL <= -(threshold + stopDistance)) {
+                            losses++;
+                            totalProfitTicks -= stopDistance;
+                            inTrade = false;
+                        }
+                    }
+                } else {
+                    // In Trade
+                    if (position === 1) { // Short (Market is High)
+                        // Stop Check: High went too high?
+                        if (distH >= entryDistortion + stopDistance) {
+                            losses++;
+                            totalProfitTicks -= stopDistance;
+                            inTrade = false;
+                            continue;
+                        }
+                        // Target Check: Price went to mean (0)?
+                        // If Low <= 0 (crossed mean from above)
+                        // Or if taking profit at 0.
+                        // Let's assume Target is Mean (0)
+                        if (distL <= 0) {
+                            wins++;
+                            totalProfitTicks += threshold; // Profit is the distance from entry(threshold) to 0
+                            inTrade = false;
+                            continue;
+                        }
+                    } else if (position === -1) { // Long (Market is Low)
+                        // Stop Check: Low went too low?
+                        if (distL <= entryDistortion - stopDistance) {
+                            losses++;
+                            totalProfitTicks -= stopDistance;
+                            inTrade = false;
+                            continue;
+                        }
+                        // Target Check: Price went to mean (0)?
+                        // If High >= 0 (crossed mean from below)
+                        if (distH >= 0) {
+                            wins++;
+                            totalProfitTicks += threshold;
+                            inTrade = false;
+                            continue;
+                        }
+                    }
                 }
             }
-        }
 
-        if (count >= 5) {
-            const avgMAE = totalMAE / count;
-            const suggestedStop = Math.ceil(avgMAE + (avgMAE * 0.5) + 5);
-            const score = (threshold / suggestedStop) * Math.log(count); // Weight profit vs risk vs frequency
+            const totalTrades = wins + losses;
+            if (totalTrades >= 5) {
+                const winRate = wins / totalTrades;
+                // Score metric: Total Profit * ln(Trades) * WinRate
+                // Heavily penalize low win rates for "Conservative"
 
-            results.push({
-                threshold,
-                count,
-                avgMAE,
-                suggestedStop,
-                profit: threshold,
-                score
-            });
-        }
+                // Expectancy per trade
+                const expectancy = totalProfitTicks / totalTrades;
+
+                results.push({
+                    threshold,
+                    stopMult,
+                    stopDistance,
+                    count: totalTrades,
+                    wins,
+                    losses,
+                    winRate,
+                    totalProfit: totalProfitTicks,
+                    expectancy,
+                    // Map to existing UI fields where possible
+                    avgMAE: stopDistance, // Approximation for UI display
+                    suggestedStop: stopDistance,
+                    profit: threshold, // Target
+                    score: totalProfitTicks // Use total profit as base score
+                });
+            }
+        });
     });
 
     if (results.length === 0) return null;
-    results.sort((a, b) => b.score - a.score);
 
-    // Defensive selection
-    const balanced = results[0];
-    const conservative = results.filter(r => r.threshold > balanced.threshold)[0] || balanced;
-    const aggressive = results.filter(r => r.count > balanced.count * 1.5)[0] || results[results.length - 1];
+    // Filter out losing strategies
+    const profitable = results.filter(r => r.totalProfit > 0);
+    if (profitable.length === 0) return null;
 
-    return { balanced, conservative, aggressive };
+    // Strategies Sorting
+    // Conservative: High Win Rate (> 80%), Low Drawdown (Low Stop Mult)
+    // Balanced: Good Mix
+    // Aggressive: High Total Profit
+
+    profitable.sort((a, b) => b.score - a.score); // Default best profit
+
+    // 1. Conservative
+    // Sort by Win Rate desc, then Count desc
+    const conservativeCandidates = [...profitable].sort((a, b) => {
+        if (b.winRate !== a.winRate) return b.winRate - a.winRate; // Prioritize Win Rate
+        return b.count - a.count;
+    });
+    // Pick first with good count
+    const conservative = conservativeCandidates[0];
+
+    // 2. Aggressive
+    // Simply max total profit
+    const aggressive = profitable[0];
+
+    // 3. Balanced
+    // Sort by Expectancy * Sqrt(Count) -> Efficiency
+    const balancedCandidates = [...profitable].sort((a, b) => {
+        const scoreA = a.expectancy * Math.sqrt(a.count);
+        const scoreB = b.expectancy * Math.sqrt(b.count);
+        return scoreB - scoreA;
+    });
+    const balanced = balancedCandidates[0];
+
+    // Ensure distinct strategies if possible, else fallback
+    return {
+        conservative: conservative || balanced,
+        balanced: balanced || aggressive,
+        aggressive: aggressive || balanced
+    };
 };
 
 export const calculateGridStrategy = (data, selectedSMA) => {
