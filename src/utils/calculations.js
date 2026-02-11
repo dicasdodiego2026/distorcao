@@ -1283,3 +1283,194 @@ export const findSafeTimeInterval = (data, selectedSMA, maxDistortionThreshold =
         tickSize
     };
 };
+/**
+ * Analyzes distortion cycles: Departure from Mean -> Max Excursion -> Return to Mean
+ * Returns statistics about these cycles for visualization.
+ */
+export const analyzeDistortionCycles = (data, selectedSMA) => {
+    if (!data || data.length === 0) return null;
+
+    const distKey = `dist${selectedSMA}`;
+    const distHighKey = `dist${selectedSMA}_high`;
+    const distLowKey = `dist${selectedSMA}_low`;
+
+    const cycles = [];
+    let currentCycle = null; // { type: 'ABOVE'|'BELOW', startTime, startPrice, maxDistortion, duration }
+
+    // Frequency Histogram Buckets (0-50, 50-100, etc.)
+    const frequencyBuckets = {};
+    const bucketSize = 50;
+
+    // Hourly Volatility Accumulators
+    const hourlyData = {}; // { "09": { sumMaxDist: 0, count: 0 }, ... }
+
+    data.forEach(bar => {
+        // Skip invalid data
+        if (bar[distKey] === null) return;
+
+        const dist = bar[distKey];
+        const distHigh = bar[distHighKey]; // Max distortion reached in this bar (High - SMA)
+        const distLow = bar[distLowKey];   // Min distortion reached in this bar (Low - SMA)
+        const timestamp = new Date(bar.timestamp);
+        const hour = timestamp.getHours().toString().padStart(2, '0');
+
+        // State Machine
+        if (!currentCycle) {
+            // Check for Breakout (Start of Cycle)
+            // A cycle starts when bar CLOSES away from mean? Or immediately when High/Low deviates?
+            // To be robust, let's say a cycle starts when the bar OPENS or CLOSES away, 
+            // but for simplicity and noise reduction, let's use the standard "Distortion" value (Close).
+            // Actually, user wants "destoceu, quantos ticks e voltou". 
+            // If Close != 0, we are distorted.
+            // But we want significant cycles. Let's track deviations.
+
+            if (dist > 0) {
+                currentCycle = {
+                    type: 'ABOVE',
+                    startTime: timestamp,
+                    startPrice: bar.close,
+                    maxDistortion: distHigh, // Initial max is the High of this breakout bar
+                    barsCount: 1
+                };
+            } else if (dist < 0) {
+                currentCycle = {
+                    type: 'BELOW',
+                    startTime: timestamp,
+                    startPrice: bar.close,
+                    maxDistortion: Math.abs(distLow), // Initial max is abs(Low)
+                    barsCount: 1
+                };
+            }
+        } else {
+            // In Cycle
+            if (currentCycle.type === 'ABOVE') {
+                // Update Max Excursion
+                if (distHigh > currentCycle.maxDistortion) {
+                    currentCycle.maxDistortion = distHigh;
+                }
+                currentCycle.barsCount++;
+
+                // Check for End of Cycle (Return to Mean)
+                // If Low <= 0, it touched the mean.
+                if (distLow <= 0) {
+                    // Cycle Ended
+                    currentCycle.endTime = timestamp;
+                    cycles.push(currentCycle);
+
+                    // Add to stats
+                    const maxDist = currentCycle.maxDistortion;
+
+                    // Histogram
+                    const bucket = Math.floor(maxDist / bucketSize) * bucketSize;
+                    frequencyBuckets[bucket] = (frequencyBuckets[bucket] || 0) + 1;
+
+                    // Hourly
+                    const startHour = currentCycle.startTime.getHours().toString().padStart(2, '0');
+                    if (!hourlyData[startHour]) hourlyData[startHour] = { sumMaxDist: 0, count: 0 };
+                    hourlyData[startHour].sumMaxDist += maxDist;
+                    hourlyData[startHour].count++;
+
+                    currentCycle = null;
+                }
+            } else if (currentCycle.type === 'BELOW') {
+                // Update Max Excursion (distLow is negative, take abs)
+                const absLow = Math.abs(distLow);
+                if (absLow > currentCycle.maxDistortion) {
+                    currentCycle.maxDistortion = absLow;
+                }
+                currentCycle.barsCount++;
+
+                // Check for End of Cycle (Return to Mean)
+                // If High >= 0, it touched the mean.
+                if (distHigh >= 0) {
+                    // Cycle Ended
+                    currentCycle.endTime = timestamp;
+                    cycles.push(currentCycle);
+
+                    // Add to stats
+                    const maxDist = currentCycle.maxDistortion;
+
+                    // Histogram
+                    const bucket = Math.floor(maxDist / bucketSize) * bucketSize;
+                    frequencyBuckets[bucket] = (frequencyBuckets[bucket] || 0) + 1;
+
+                    // Hourly
+                    const startHour = currentCycle.startTime.getHours().toString().padStart(2, '0');
+                    if (!hourlyData[startHour]) hourlyData[startHour] = { sumMaxDist: 0, count: 0 };
+                    hourlyData[startHour].sumMaxDist += maxDist;
+                    hourlyData[startHour].count++;
+
+                    currentCycle = null;
+                }
+            }
+        }
+    });
+
+    // Format Data for Charting
+    const histogramData = Object.keys(frequencyBuckets)
+        .map(bucket => ({
+            range: `${bucket}-${Number(bucket) + bucketSize}`,
+            bucket: Number(bucket),
+            count: frequencyBuckets[bucket]
+        }))
+        .sort((a, b) => a.bucket - b.bucket);
+
+    const hourlyVolatility = Object.keys(hourlyData)
+        .map(hour => ({
+            hour: `${hour}:00`,
+            avgMaxDistortion: hourlyData[hour].sumMaxDist / hourlyData[hour].count,
+            count: hourlyData[hour].count
+        }))
+        .sort((a, b) => a.hour.localeCompare(b.hour));
+
+    // Summary Stats
+    const totalCycles = cycles.length;
+    const avgDuration = cycles.reduce((sum, c) => sum + c.barsCount, 0) / (totalCycles || 1);
+    const avgPeakDistortion = cycles.reduce((sum, c) => sum + c.maxDistortion, 0) / (totalCycles || 1);
+
+    return {
+        totalCycles,
+        avgDurationBars: Math.round(avgDuration),
+        avgPeakDistortion: Math.round(avgPeakDistortion),
+        histogram: histogramData,
+        hourlyVolatility: hourlyVolatility,
+        recentCycles: cycles.slice(-20) // Provide last 20 for specific list if needed
+    };
+};
+
+/**
+ * Generates scatter plot data: Time (00:00-23:59) vs Distortion (Ticks)
+ * Aggregates all days into a single 24h view.
+ */
+export const generateScatterData = (data, selectedSMA) => {
+    if (!data || data.length === 0) return [];
+
+    const distKey = `dist${selectedSMA}`;
+    const scatterPoints = [];
+
+    data.forEach(bar => {
+        if (bar[distKey] === null || bar[distKey] === undefined) return;
+
+        const date = new Date(bar.timestamp);
+        const hours = date.getHours();
+        const minutes = date.getMinutes();
+        const timeInMinutes = hours * 60 + minutes; // 0 to 1439
+
+        // Format time label for tooltip/axis
+        const timeLabel = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+
+        // Absolute distortion
+        const distortion = Math.abs(bar[distKey]);
+
+        // Filter out very small distortions if needed, but user said "0 to 800"
+
+        scatterPoints.push({
+            x: timeInMinutes,
+            y: distortion,
+            timeLabel: timeLabel,
+            fullDate: date.toLocaleString()
+        });
+    });
+
+    return scatterPoints;
+};
