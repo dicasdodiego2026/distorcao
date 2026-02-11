@@ -1033,7 +1033,7 @@ export const findSafeTimeInterval = (data, selectedSMA, maxDistortionThreshold =
     });
 
     // Step 3: Find the longest contiguous interval
-    if (safeSlots.length === 0) return { found: false, daysAnalyzed, threshold: maxDistortionThreshold, tickSize };
+    if (safeSlots.length === 0) return { found: false, reason: "THRESHOLD_EXCEEDED", daysAnalyzed, threshold: maxDistortionThreshold, tickSize };
 
     // Helper: Verify Mean Reversion for a candidate sequence (interval)
     const checkMeanReversion = (sequence) => {
@@ -1111,19 +1111,30 @@ export const findSafeTimeInterval = (data, selectedSMA, maxDistortionThreshold =
     // So if full chunk fails, sub-chunks likely fail too unless the "bad part" is at the edges.
     // Let's just validate the longest chunks. Ideally, we return the longest VALID chunk.
 
+    let hasCandidatesButFailedMeanReversion = false;
+
     for (const chunk of chunks) {
         if (checkMeanReversion(chunk)) {
             if (chunk.length > maxSequence.length) {
                 maxSequence = chunk;
             }
         } else {
+            hasCandidatesButFailedMeanReversion = true;
             // Fallback: This chunk is safe by Threshold, but fails Mean Reversion (Trended without return).
             // We could try to split it? Too complex for now. User wants to AVOID these.
             // So simply discarding is correct behavior (it's not safe).
         }
     }
 
-    if (maxSequence.length === 0) return { found: false, daysAnalyzed, threshold: maxDistortionThreshold, tickSize };
+    if (maxSequence.length === 0) {
+        return {
+            found: false,
+            reason: hasCandidatesButFailedMeanReversion ? "MEAN_REVERSION_FAILED" : "NO_CHUNKS",
+            daysAnalyzed,
+            threshold: maxDistortionThreshold,
+            tickSize
+        };
+    }
 
     // Aggregate stats for the best interval
     const startTime = maxSequence[0].timeSlot;

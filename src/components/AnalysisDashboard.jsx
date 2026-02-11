@@ -896,15 +896,39 @@ export function AnalysisDashboard() {
                                         <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-6 text-center">
                                             <div className="flex items-center justify-center gap-3 mb-3">
                                                 <AlertCircle className="w-6 h-6 text-amber-400" />
-                                                <span className="text-lg font-semibold text-amber-400">Nenhum Intervalo Seguro Encontrado</span>
+                                                <span className="text-lg font-semibold text-amber-400">
+                                                    {safeInterval.reason === 'MEAN_REVERSION_FAILED'
+                                                        ? 'Filtro de Retorno à Média Ativado'
+                                                        : 'Nenhum Intervalo Seguro Encontrado'}
+                                                </span>
                                             </div>
-                                            <p className="text-slate-400 text-sm max-w-2xl mx-auto">
-                                                Nos <strong className="text-white">{safeInterval.daysAnalyzed} dias</strong> analisados, não foi encontrado nenhum intervalo de horário onde a distorção
-                                                ficou consistentemente abaixo de <strong className="text-amber-400">{safeInterval.threshold} ticks</strong> (acima ou abaixo da média) em todos os dias.
-                                            </p>
-                                            <p className="text-slate-500 text-xs mt-3">
-                                                💡 Dica: Considere aumentar o threshold ou analisar um período diferente.
-                                            </p>
+
+                                            {safeInterval.reason === 'MEAN_REVERSION_FAILED' ? (
+                                                <div className="space-y-3">
+                                                    <p className="text-slate-300 text-sm max-w-2xl mx-auto">
+                                                        Intervalos "seguros" (abaixo de {safeInterval.threshold} ticks) foram encontrados, mas <strong className="text-rose-400">descartados</strong> porque o preço não retornou à média neles (Tendência Detectada).
+                                                    </p>
+                                                    <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-700/50 text-left text-xs text-slate-400 max-w-xl mx-auto space-y-2">
+                                                        <p><strong>Por que isso acontece?</strong></p>
+                                                        <p>Ao usar um limite alto (ex: 500 ticks), você inclui momentos de tendência forte. O filtro "Exigir Retorno à Média" descarta qualquer intervalo onde o preço tenha pego tendência (não voltou para a média).</p>
+                                                        <p><strong>Como resolver:</strong></p>
+                                                        <ul className="list-disc list-inside ml-2">
+                                                            <li>Desative a opção <strong>"Exigir Retorno à Média"</strong> para ver esses intervalos de tendência.</li>
+                                                            <li>Ou <strong>diminua o limite</strong> (ex: 60 ticks) para filtrar os momentos de tendência e focar em consolidação.</li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <p className="text-slate-400 text-sm max-w-2xl mx-auto">
+                                                        Nos <strong className="text-white">{safeInterval.daysAnalyzed} dias</strong> analisados, não foi encontrado nenhum intervalo de horário onde a distorção
+                                                        ficou consistentemente abaixo de <strong className="text-amber-400">{safeInterval.threshold} ticks</strong> (acima ou abaixo da média) em todos os dias.
+                                                    </p>
+                                                    <p className="text-slate-500 text-xs mt-3">
+                                                        💡 Dica: Considere aumentar o threshold ou analisar um período diferente.
+                                                    </p>
+                                                </>
+                                            )}
                                         </div>
                                     )}
 
