@@ -67,14 +67,8 @@ export function AnalysisDashboard() {
 
     const stats = useMemo(() => generateStats(data, selectedSMA), [data, selectedSMA]);
 
-    // Intraday Distortion Data: Aggregated by 30-min buckets
     const intradayData = useMemo(() => {
         return aggregateByTime(data, selectedSMA);
-    }, [data, selectedSMA]);
-
-    // Strategy Optimization
-    const strategies = useMemo(() => {
-        return findOptimalStrategy(data, selectedSMA);
     }, [data, selectedSMA]);
 
     // Grid Strategy Optimization
@@ -83,10 +77,35 @@ export function AnalysisDashboard() {
     }, [data, selectedSMA]);
 
     // Safe Time Interval Analysis
-    // Safe Time Interval Analysis
     const safeInterval = useMemo(() => {
         return findSafeTimeInterval(data, selectedSMA, safeThreshold, meanReversionEnabled, meanReversionTolerance);
     }, [data, selectedSMA, safeThreshold, meanReversionEnabled, meanReversionTolerance]);
+
+    // Strategy Optimization (Context Aware)
+    const { strategies, strategyContext } = useMemo(() => {
+        if (!data || data.length === 0) return { strategies: null, strategyContext: "Dados Insuficientes" };
+
+        let optimizationData = data;
+        let contextLabel = "Todo o Período";
+
+        // If Safe Interval is FOUND, filter data to ONLY use that interval
+        if (safeInterval?.found && safeInterval.startTime && safeInterval.endTime) {
+            const startMinutes = parseInt(safeInterval.startTime.split(':')[0]) * 60 + parseInt(safeInterval.startTime.split(':')[1]);
+            const endMinutes = parseInt(safeInterval.endTime.split(':')[0]) * 60 + parseInt(safeInterval.endTime.split(':')[1]);
+
+            optimizationData = data.filter(bar => {
+                const barDate = new Date(bar.timestamp);
+                const barMinutes = barDate.getHours() * 60 + barDate.getMinutes();
+                return barMinutes >= startMinutes && barMinutes < endMinutes;
+            });
+            contextLabel = `Intervalo Seguro (${safeInterval.startTime} - ${safeInterval.endTime})`;
+        }
+
+        return {
+            strategies: findOptimalStrategy(optimizationData, selectedSMA),
+            strategyContext: contextLabel
+        };
+    }, [data, selectedSMA, safeInterval]);
 
     const CustomTooltip = ({ active, payload, label }) => {
         if (!active || !payload || !payload.length || !payload[0]) return null;
@@ -479,15 +498,21 @@ export function AnalysisDashboard() {
                             <StrategySimulator data={data} selectedSMA={selectedSMA} timezoneOffset={timezoneOffset} strategyToLoad={strategyToLoad} />
                         </div>
 
-                        {/* Strategy Recommendations */}
+                        {/* Best Strategies Cards */}
                         {strategies && (
-                            <div className="space-y-6">
-                                <h3 className="text-xl font-bold text-white flex items-center gap-2 border-l-4 border-indigo-500 pl-4">
-                                    <Target className="w-6 h-6 text-indigo-400" />
-                                    Melhores Estratégias Encontradas
-                                </h3>
+                            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200">
+                                <div className="flex items-center justify-between">
+                                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                        <Zap className="w-5 h-5 text-amber-500" />
+                                        Melhores Estratégias
+                                    </h2>
+                                    <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-lg px-3 py-1">
+                                        <Clock className="w-3 h-3 text-slate-400" />
+                                        <span className="text-xs text-slate-400">Analisando: <strong className="text-emerald-400">{strategyContext}</strong></span>
+                                    </div>
+                                </div>
                                 <p className="text-slate-400 text-sm">
-                                    Com base na análise histórica de reversão à média, estas são as configurações sugeridas para maximizar seus ganhos.
+                                    Configurações com maior lucro e assertividade no período analisado.
                                 </p>
 
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -499,7 +524,7 @@ export function AnalysisDashboard() {
                                         <div className="relative z-10">
                                             <div className="flex items-center gap-2 mb-4 text-emerald-400 font-bold uppercase tracking-wider text-sm">
                                                 <Shield className="w-4 h-4" />
-                                                Conservador (Alta Taxa de Acerto)
+                                                Conservadora
                                             </div>
                                             <div className="space-y-4">
                                                 <div>
@@ -538,7 +563,7 @@ export function AnalysisDashboard() {
                                         <div className="relative z-10">
                                             <div className="flex items-center gap-2 mb-4 text-indigo-400 font-bold uppercase tracking-wider text-sm">
                                                 <Target className="w-4 h-4" />
-                                                Equilibrado (Recomendado)
+                                                Equilibrada
                                             </div>
                                             <div className="space-y-4">
                                                 <div>
@@ -577,7 +602,7 @@ export function AnalysisDashboard() {
                                         <div className="relative z-10">
                                             <div className="flex items-center gap-2 mb-4 text-amber-400 font-bold uppercase tracking-wider text-sm">
                                                 <Zap className="w-4 h-4" />
-                                                Agressivo (Maior Lucro)
+                                                Agressiva
                                             </div>
                                             <div className="space-y-4">
                                                 <div>
