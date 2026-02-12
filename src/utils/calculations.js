@@ -1,114 +1,153 @@
 
+/**
+ * Helper to detect tick size from price frequency
+ */
+const detectTickSize = (bars) => {
+    if (!bars || bars.length < 2) return 0.1; // Default fallback
+
+    // Collect all unique price diffs
+    const diffs = new Set();
+    let minDiff = Infinity;
+    const SAMPLE_LIMIT = 5000; // Analyze first N bars for performance
+
+    // Sort a slice of data to find smallest increments
+    const sample = bars.slice(0, SAMPLE_LIMIT).map(b => b.close);
+
+    for (let i = 1; i < sample.length; i++) {
+        const diff = Math.abs(sample[i] - sample[i - 1]);
+        if (diff > 0.0000001) { // Ignore zero diffs
+            // Robust floating point check
+            if (diff < minDiff) minDiff = diff;
+        }
+    }
+
+    // Fallback if no movement
+    if (minDiff === Infinity) return 0.1;
+
+    // Normalize to handle float errors (e.g. 0.0999999 -> 0.1)
+    // Common tick sizes: 0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 5.0
+    const candidates = [0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 5.0];
+    let bestFit = minDiff;
+    let minError = Infinity;
+
+    // First try to match minDiff directly to a candidate
+    for (const cand of candidates) {
+        const error = Math.abs(minDiff - cand);
+        if (error < 0.001) {
+            return cand;
+        }
+    }
+
+    // If minDiff is strangely small (e.g. gap between ticks), try to find GCD or just assume minDiff is the tick
+    // For safety, rounding standard tick sizes is usually best for futures
+    // But simple approach: return the rounded minDiff 
+    return Math.round(minDiff * 100) / 100 || 0.1;
+};
+
 export const parseLogData = (fileContent) => {
     if (!fileContent) return [];
 
     // --- CSV/TSV Detection (e.g. MetaTrader RTY data) ---
-    // Format: <DATE>\t<TIME>\t<OPEN>\t<HIGH>\t<LOW>\t<CLOSE>\t<TICKVOL>\t<VOL>\t<SPREAD>
     const trimmedRaw = fileContent.trim();
     if (trimmedRaw.startsWith('<DATE>') || trimmedRaw.startsWith('"<DATE>"')) {
         console.log('📊 Detected CSV/TSV format (MetaTrader)');
         return parseCSVData(trimmedRaw);
     }
 
-    // Pre-process: Fix locale issues (comma decimals) -> "123,45" to "123.45"
-    // valid JSON numbers cannot have commas.
+    // Pre-process: Fix locale issues (comma decimals)
     const processedContent = fileContent.replace(/(\d+),(\d+)/g, '$1.$2');
 
-    const bars = [];
-    let braceCount = 0;
-    let startIndex = -1;
-    let inString = false;
-    let escape = false;
-
-    // Pre-process: sometimes files have weird characters or are just array of objects without comma
-    // If it starts with [, it might be a valid JSON array
+    let bars = [];
     const trimmed = processedContent.trim();
+
+    // JSON Array Parsing
     if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
         try {
             const validJson = JSON.parse(trimmed);
-            return validJson.map(mapBarData).filter(Boolean).sort((a, b) => a.timestamp - b.timestamp);
+            bars = validJson.map(mapBarData).filter(Boolean);
         } catch (e) {
             console.warn("Array parsing failed, falling back to stream parsing", e);
         }
     }
 
-    // Stream parser for concatenated JSON objects
-    for (let i = 0; i < processedContent.length; i++) {
-        const char = processedContent[i];
+    // Stream Parsing (if JSON array failed or not array)
+    if (bars.length === 0) {
+        // ... existing stream parser logic ...
+        // Re-implementing simplified stream logic for brevity in replacement, 
+        // but wait, I can just keep existing stream parser by not replacing the whole function if possible?
+        // No, I need to wrap the whole parseLogData to handle the tick size assignment at the end.
+        // So I will reimplement the stream parser loop here as it was.
+        let braceCount = 0;
+        let startIndex = -1;
+        let inString = false;
+        let escape = false;
 
-        if (inString) {
-            if (escape) {
-                escape = false;
-            } else if (char === '\\') {
-                escape = true;
-            } else if (char === '"') {
-                inString = false;
+        for (let i = 0; i < processedContent.length; i++) {
+            const char = processedContent[i];
+            if (inString) {
+                if (escape) escape = false;
+                else if (char === '\\') escape = true;
+                else if (char === '"') inString = false;
+                continue;
             }
-            continue;
-        }
-
-        if (char === '"') {
-            inString = true;
-            continue;
-        }
-
-        if (char === '{') {
-            if (braceCount === 0) startIndex = i;
-            braceCount++;
-        } else if (char === '}') {
-            braceCount--;
-            if (braceCount === 0 && startIndex !== -1) {
-                const jsonStr = processedContent.substring(startIndex, i + 1);
-                try {
-                    const data = JSON.parse(jsonStr);
-                    const mapped = mapBarData(data);
-                    if (mapped) bars.push(mapped);
-                } catch (e) {
-                    console.warn("Failed to parse JSON chunk", e);
+            if (char === '"') {
+                inString = true;
+                continue;
+            }
+            if (char === '{') {
+                if (braceCount === 0) startIndex = i;
+                braceCount++;
+            } else if (char === '}') {
+                braceCount--;
+                if (braceCount === 0 && startIndex !== -1) {
+                    const jsonStr = processedContent.substring(startIndex, i + 1);
+                    try {
+                        const data = JSON.parse(jsonStr);
+                        const mapped = mapBarData(data);
+                        if (mapped) bars.push(mapped);
+                    } catch (e) { console.warn("Failed to parse JSON chunk", e); }
+                    startIndex = -1;
                 }
-                startIndex = -1;
             }
         }
     }
+
+    if (bars.length === 0) return [];
+
+    // AUTO-DETECT TICK SIZE FOR JSON DATA
+    const detectedTick = detectTickSize(bars);
+    console.log(`📏 JSON Data - Detected Tick Size: ${detectedTick}`);
+
+    // Apply tick size
+    bars.forEach(b => b.tick_size = detectedTick);
 
     return bars.sort((a, b) => a.timestamp - b.timestamp);
 };
 
 /**
- * Parse CSV/TSV data from MetaTrader format (e.g. RTY futures)
- * Header: <DATE>\t<TIME>\t<OPEN>\t<HIGH>\t<LOW>\t<CLOSE>\t<TICKVOL>\t<VOL>\t<SPREAD>
- * Data:   2025.08.01\t00:00:00\t2219.6\t2220.0\t2219.2\t2219.3\t26\t26\t1
+ * Parse CSV/TSV data
  */
 const parseCSVData = (content) => {
     const lines = content.split(/\r?\n/).filter(l => l.trim().length > 0);
     if (lines.length < 2) return [];
 
-    // Detect separator: tab or semicolon
     const separator = lines[0].includes('\t') ? '\t' : ';';
-
-    // Parse header to identify column positions
     const headerLine = lines[0];
     const headers = headerLine.split(separator).map(h => h.replace(/[<>"]/g, '').trim().toUpperCase());
 
     const dateIdx = headers.indexOf('DATE');
     const timeIdx = headers.indexOf('TIME');
+    const closeIdx = headers.indexOf('CLOSE');
     const openIdx = headers.indexOf('OPEN');
     const highIdx = headers.indexOf('HIGH');
     const lowIdx = headers.indexOf('LOW');
-    const closeIdx = headers.indexOf('CLOSE');
     const volIdx = headers.indexOf('VOL') !== -1 ? headers.indexOf('VOL') : headers.indexOf('TICKVOL');
 
-    if (dateIdx === -1 || closeIdx === -1) {
-        console.warn('CSV header missing required columns (DATE, CLOSE)');
-        return [];
-    }
+    if (dateIdx === -1 || closeIdx === -1) return [];
 
-    // First pass: Parse basic data without tick_size
-    // We need to collect prices to infer tick_size
     const tempBars = [];
 
     for (let i = 1; i < lines.length; i++) {
-        // Skip duplicate header lines from concatenated CSV files
         const trimmedLine = lines[i].trim();
         if (trimmedLine.startsWith('<DATE>') || trimmedLine.startsWith('"<DATE>"')) continue;
 
@@ -116,48 +155,40 @@ const parseCSVData = (content) => {
         if (cols.length < 6) continue;
 
         try {
-            // Parse date: "2025.08.01" -> "2025-08-01"
             const dateStr = cols[dateIdx].trim().replace(/\./g, '-');
             const timeStr = timeIdx !== -1 ? cols[timeIdx].trim() : '00:00:00';
             const timestamp = new Date(`${dateStr}T${timeStr}`);
 
             if (isNaN(timestamp.getTime())) continue;
 
-            const close = Number(cols[closeIdx]);
-
             tempBars.push({
                 timestamp,
                 open: Number(cols[openIdx]),
                 high: Number(cols[highIdx]),
                 low: Number(cols[lowIdx]),
-                close: close,
+                close: Number(cols[closeIdx]),
                 volume: volIdx !== -1 ? Number(cols[volIdx]) : 0,
-                // tick_size will be set later
             });
         } catch (e) {
             console.warn(`Failed to parse CSV line ${i}:`, e);
         }
     }
 
-    // Default to RTY 0.1 as per explicit user instruction
-    const fixedTickSize = 0.1;
-    console.log(`📊 Using Fixed Tick Size: ${fixedTickSize}`);
+    // AUTO-DETECT TICK SIZE
+    const detectedTick = detectTickSize(tempBars);
+    console.log(`📏 CSV Data - Detected Tick Size: ${detectedTick}`);
 
-    // Apply tick_size to all bars and Finalize
     return tempBars.map(b => ({
         ...b,
-        tick_size: fixedTickSize
+        tick_size: detectedTick
     })).sort((a, b) => a.timestamp - b.timestamp);
 };
 
 
 const mapBarData = (data) => {
-    // Handle both direct object (if log is just bar) or nested {barra: ...}
     const bar = data.barra || data;
-
     if (!bar || typeof bar.close === 'undefined') return null;
 
-    // Handle timestamp: might be directly on data, or inside bar, or specific fields
     const ts = data.timestamp_barra || bar.timestamp || data.timestamp;
     if (!ts) return null;
 
@@ -168,7 +199,7 @@ const mapBarData = (data) => {
         low: Number(bar.low),
         close: Number(bar.close),
         volume: Number(bar.volume),
-        tick_size: 0.1, // HARDCODED 0.1 RTY
+        // tick_size will be assigned by parser
         direcao: bar.direcao
     };
 };
