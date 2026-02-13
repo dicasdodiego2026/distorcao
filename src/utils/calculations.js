@@ -5,43 +5,63 @@
 const detectTickSize = (bars) => {
     if (!bars || bars.length < 2) return 0.1; // Default fallback
 
-    // Collect all unique price diffs
-    const diffs = new Set();
     let minDiff = Infinity;
-    const SAMPLE_LIMIT = 5000; // Analyze first N bars for performance
+    const SAMPLE_LIMIT = 5000;
+    const sample = bars.slice(0, SAMPLE_LIMIT);
 
-    // Sort a slice of data to find smallest increments
-    const sample = bars.slice(0, SAMPLE_LIMIT).map(b => b.close);
+    // Check Intra-bar differences (High - Low) and Inter-bar (Close - Close)
+    for (const bar of sample) {
+        // High - Low
+        const diffHL = Math.abs(bar.high - bar.low);
+        if (diffHL > 0.0000001 && diffHL < minDiff) minDiff = diffHL;
 
-    for (let i = 1; i < sample.length; i++) {
-        const diff = Math.abs(sample[i] - sample[i - 1]);
-        if (diff > 0.0000001) { // Ignore zero diffs
-            // Robust floating point check
-            if (diff < minDiff) minDiff = diff;
+        // Close - Open
+        const diffCO = Math.abs(bar.close - bar.open);
+        if (diffCO > 0.0000001 && diffCO < minDiff) minDiff = diffCO;
+
+        // Decimals check (Modulus)
+        // Helps to identify tick size even if price moves in large chunks
+        const price = bar.close;
+        const decimal = price - Math.floor(price);
+
+        // If we see .25 or .75, it STRONGLY suggests 0.25 tick (or 0.05, 0.01)
+        if (Math.abs(decimal - 0.25) < 0.001 || Math.abs(decimal - 0.75) < 0.001) {
+            if (minDiff > 0.25) minDiff = 0.25;
+        }
+        // If we see .1 or .3, it suggests 0.1
+        else if (Math.abs(decimal - 0.1) < 0.001 || Math.abs(decimal - 0.3) < 0.001) {
+            if (minDiff > 0.1) minDiff = 0.1;
         }
     }
 
-    // Fallback if no movement
+    // Also check inter-bar closes for gaps
+    for (let i = 1; i < sample.length; i++) {
+        const diff = Math.abs(sample[i].close - sample[i - 1].close);
+        if (diff > 0.0000001 && diff < minDiff) minDiff = diff;
+    }
+
     if (minDiff === Infinity) return 0.1;
 
-    // Normalize to handle float errors (e.g. 0.0999999 -> 0.1)
-    // Common tick sizes: 0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 5.0
-    const candidates = [0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 5.0];
-    let bestFit = minDiff;
-    let minError = Infinity;
+    // Fix floating point issues (e.g. 0.250000001)
+    minDiff = Number(minDiff.toFixed(6));
 
-    // First try to match minDiff directly to a candidate
+    // Candidates
+    const candidates = [0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 5.0];
+
+    let bestFit = candidates[0];
+    let smallestError = Infinity;
+
     for (const cand of candidates) {
         const error = Math.abs(minDiff - cand);
         if (error < 0.001) {
             return cand;
         }
+        // Also check if minDiff is a multiple of candidate? 
+        // No, minDiff IS the smallest increment found.
     }
 
-    // If minDiff is strangely small (e.g. gap between ticks), try to find GCD or just assume minDiff is the tick
-    // For safety, rounding standard tick sizes is usually best for futures
-    // But simple approach: return the rounded minDiff 
-    return Math.round(minDiff * 100) / 100 || 0.1;
+    // Fallback
+    return minDiff || 0.1;
 };
 
 export const parseLogData = (fileContent) => {
