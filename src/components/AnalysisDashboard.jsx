@@ -30,9 +30,12 @@ export function AnalysisDashboard() {
                 throw new Error("Nenhum dado válido encontrado. Verifique se o arquivo está no formato correto (.json).");
             }
 
-            // Calculate SMA and distortions directly here, as they are needed for scatterData
-            const smaValues = calculateSMA(parsed, selectedSMA); // This returns an array of SMA values
-            const enrichedData = calculateDistortions(parsed, smaValues, smaValues, smaValues); // Pass SMA values for all three
+            // Calculate ALL SMAs (10, 25, 50) so switching works instantly without reprocessing
+            const sma10 = calculateSMA(parsed, 10);
+            const sma25 = calculateSMA(parsed, 25);
+            const sma50 = calculateSMA(parsed, 50);
+
+            const enrichedData = calculateDistortions(parsed, sma10, sma25, sma50);
 
             setData(enrichedData);
             setLoading(false);
