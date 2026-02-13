@@ -281,7 +281,7 @@ export function AnalysisDashboard() {
                                         type="number"
                                         dataKey="y"
                                         name="Range Máximo"
-                                        domain={[0, 'auto']}
+                                        domain={[0, 800]}
                                         stroke="#64748b"
                                         fontSize={12}
                                         tickLine={false}

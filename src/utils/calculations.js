@@ -1510,6 +1510,10 @@ export const generateScatterData = (data, selectedSMA) => {
  * Generates data for the Range Scatter Plot (Max Excursion per Cycle)
  * X: Cycle Start Time
  * Y: Max Distortion reached during the cycle (Range)
+ * 
+ * UPDATE: To match the visual density of the main chart ("nuvem de pontos"),
+ * we now generate a point for EVERY minute within the cycle, 
+ * all having the same Y value (the Max Range of that cycle).
  */
 export const generateRangeScatterData = (data, selectedSMA) => {
     if (!data || data.length === 0) return [];
@@ -1519,7 +1523,10 @@ export const generateRangeScatterData = (data, selectedSMA) => {
     const distLowKey = `dist${selectedSMA}_low`;
 
     const scatterPoints = [];
-    let currentCycle = null;
+    let tempCycles = []; // Accumulate bars for current cycle
+    let currentCycleMax = 0;
+    let inCycle = false;
+    let cycleType = null; // 'ABOVE' or 'BELOW'
 
     data.forEach(bar => {
         if (bar[distKey] === null) return;
@@ -1527,77 +1534,78 @@ export const generateRangeScatterData = (data, selectedSMA) => {
         const dist = bar[distKey];
         const distHigh = bar[distHighKey];
         const distLow = bar[distLowKey];
-
-        // If we have proper date objects
         const timestamp = new Date(bar.timestamp);
 
-        // State Machine to track cycles
-        if (!currentCycle) {
-            // Start of a cycle: Price is away from SMA (0)
-            // We use a small threshold to avoid noise/floating point zero issues? 
-            // Or just strict 0 crossing? User said "leaves average".
-
+        // Determine if we are distorted (Cycle Active)
+        // Using strict 0 crossing
+        if (!inCycle) {
             if (dist > 0) {
-                currentCycle = {
-                    type: 'ABOVE',
-                    startTime: timestamp,
-                    maxDistortion: distHigh, // Initial max
-                    barsCount: 1
-                };
+                inCycle = true;
+                cycleType = 'ABOVE';
+                currentCycleMax = distHigh;
+                tempCycles.push({ timestamp });
             } else if (dist < 0) {
-                currentCycle = {
-                    type: 'BELOW',
-                    startTime: timestamp,
-                    maxDistortion: Math.abs(distLow), // Initial max (abs)
-                    barsCount: 1
-                };
+                inCycle = true;
+                cycleType = 'BELOW';
+                currentCycleMax = Math.abs(distLow);
+                tempCycles.push({ timestamp });
             }
         } else {
-            // In Cycle
-            if (currentCycle.type === 'ABOVE') {
-                // Update Max
-                if (distHigh > currentCycle.maxDistortion) currentCycle.maxDistortion = distHigh;
-                currentCycle.barsCount++;
+            // Already in cycle
+            if (cycleType === 'ABOVE') {
+                if (distHigh > currentCycleMax) currentCycleMax = distHigh;
 
-                // Check for End (Return to 0)
+                // Check exit (return to 0 or below)
                 if (distLow <= 0) {
-                    // Cycle Ended
-                    const hours = currentCycle.startTime.getHours();
-                    const minutes = currentCycle.startTime.getMinutes();
-                    const timeInMinutes = hours * 60 + minutes;
-
-                    scatterPoints.push({
-                        x: timeInMinutes,
-                        y: currentCycle.maxDistortion,
-                        timeLabel: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`,
-                        duration: currentCycle.barsCount,
-                        fullDate: currentCycle.startTime.toLocaleString()
+                    // End of cycle
+                    // Flush tempCycles with the FINAL known max
+                    tempCycles.forEach(c => {
+                        const d = new Date(c.timestamp);
+                        const h = d.getHours();
+                        const m = d.getMinutes();
+                        scatterPoints.push({
+                            x: h * 60 + m,
+                            y: currentCycleMax,
+                            timeLabel: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+                            duration: tempCycles.length,
+                            fullDate: d.toLocaleString()
+                        });
                     });
 
-                    currentCycle = null;
+                    // Reset
+                    tempCycles = [];
+                    inCycle = false;
+                    cycleType = null;
+                    currentCycleMax = 0;
+                } else {
+                    tempCycles.push({ timestamp });
                 }
             } else { // BELOW
-                // Update Max
                 const absLow = Math.abs(distLow);
-                if (absLow > currentCycle.maxDistortion) currentCycle.maxDistortion = absLow;
-                currentCycle.barsCount++;
+                if (absLow > currentCycleMax) currentCycleMax = absLow;
 
-                // Check for End (Return to 0)
+                // Check exit (return to 0 or above)
                 if (distHigh >= 0) {
-                    // Cycle Ended
-                    const hours = currentCycle.startTime.getHours();
-                    const minutes = currentCycle.startTime.getMinutes();
-                    const timeInMinutes = hours * 60 + minutes;
-
-                    scatterPoints.push({
-                        x: timeInMinutes,
-                        y: currentCycle.maxDistortion,
-                        timeLabel: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`,
-                        duration: currentCycle.barsCount,
-                        fullDate: currentCycle.startTime.toLocaleString()
+                    // End of cycle
+                    tempCycles.forEach(c => {
+                        const d = new Date(c.timestamp);
+                        const h = d.getHours();
+                        const m = d.getMinutes();
+                        scatterPoints.push({
+                            x: h * 60 + m,
+                            y: currentCycleMax,
+                            timeLabel: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+                            duration: tempCycles.length,
+                            fullDate: d.toLocaleString()
+                        });
                     });
 
-                    currentCycle = null;
+                    tempCycles = [];
+                    inCycle = false;
+                    cycleType = null;
+                    currentCycleMax = 0;
+                } else {
+                    tempCycles.push({ timestamp });
                 }
             }
         }
