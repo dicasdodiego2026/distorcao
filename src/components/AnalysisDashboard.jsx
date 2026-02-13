@@ -3,7 +3,7 @@ import {
     ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { Activity, Upload, AlertCircle, Clock } from 'lucide-react';
-import { parseLogData, calculateSMA, calculateDistortions, generateScatterData } from '../utils/calculations';
+import { parseLogData, calculateSMA, calculateDistortions, generateScatterData, generateRangeScatterData } from '../utils/calculations';
 import { FileUpload } from './FileUpload';
 
 
@@ -50,6 +50,11 @@ export function AnalysisDashboard() {
         return generateScatterData(data, selectedSMA);
     }, [data, selectedSMA]);
 
+    // Range Scatter Plot Data
+    const rangeScatterData = useMemo(() => {
+        return generateRangeScatterData(data, selectedSMA);
+    }, [data, selectedSMA]);
+
     const CustomTooltip = ({ active, payload, label }) => {
         if (!active || !payload || !payload.length) return null;
         const data = payload[0].payload;
@@ -58,6 +63,25 @@ export function AnalysisDashboard() {
                 <p className="font-bold text-slate-200 mb-1">{data.timeLabel}</p>
                 <p className="text-emerald-400 font-bold text-lg">{data.y} ticks</p>
                 <p className="text-slate-500">{data.fullDate}</p>
+            </div>
+        );
+    };
+
+    const RangeTooltip = ({ active, payload, label }) => {
+        if (!active || !payload || !payload.length) return null;
+        const dataPoint = payload[0].payload;
+        return (
+            <div className="bg-slate-800 p-3 border border-slate-700 rounded shadow-lg text-sm">
+                <p className="text-slate-300 mb-1">{dataPoint.fullDate}</p>
+                <p className="font-bold text-white mb-1">
+                    Início do Ciclo: <span className="text-emerald-400">{dataPoint.timeLabel}</span>
+                </p>
+                <p className="font-bold text-white mb-1">
+                    Máx. Range: <span className="text-emerald-400">{dataPoint.y.toFixed(1)} ticks</span>
+                </p>
+                <p className="text-slate-400 text-xs">
+                    Duração: {dataPoint.duration} barras
+                </p>
             </div>
         );
     };
@@ -221,6 +245,51 @@ export function AnalysisDashboard() {
                                     />
                                     <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3', stroke: '#ffffff30' }} />
                                     <Scatter name="Distorções" data={scatterData} fill="#818cf8" shape="circle" />
+                                </ScatterChart>
+                            </ResponsiveContainer>
+                        </div>
+
+                        {/* Range Scatter Plot */}
+                        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl h-[85vh]">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                    <Activity className="w-5 h-5 text-emerald-500" />
+                                    Dispersão de Range (Máxima Excursão por Ciclo)
+                                </h3>
+                                <div className="text-xs text-slate-500">
+                                    Total de Ciclos: <strong className="text-emerald-400">{rangeScatterData.length}</strong>
+                                </div>
+                            </div>
+
+                            <ResponsiveContainer width="100%" height="100%">
+                                <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 10 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                                    <XAxis
+                                        type="number"
+                                        dataKey="x"
+                                        name="Horário"
+                                        domain={[0, 1440]}
+                                        ticks={xAxisTicks}
+                                        tickFormatter={formatXAxis}
+                                        stroke="#64748b"
+                                        fontSize={10}
+                                        tickLine={true}
+                                        axisLine={{ stroke: '#334155' }}
+                                        interval={5}
+                                    />
+                                    <YAxis
+                                        type="number"
+                                        dataKey="y"
+                                        name="Range Máximo"
+                                        domain={[0, 'auto']}
+                                        stroke="#64748b"
+                                        fontSize={12}
+                                        tickLine={false}
+                                        axisLine={{ stroke: '#334155' }}
+                                        label={{ value: 'Range Ticks', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 12 }}
+                                    />
+                                    <Tooltip content={<RangeTooltip />} cursor={{ strokeDasharray: '3 3', stroke: '#ffffff30' }} />
+                                    <Scatter name="Ranges" data={rangeScatterData} fill="#34d399" shape="cross" />
                                 </ScatterChart>
                             </ResponsiveContainer>
                         </div>

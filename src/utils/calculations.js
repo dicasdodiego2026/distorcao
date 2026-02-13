@@ -1505,3 +1505,103 @@ export const generateScatterData = (data, selectedSMA) => {
 
     return scatterPoints;
 };
+
+/**
+ * Generates data for the Range Scatter Plot (Max Excursion per Cycle)
+ * X: Cycle Start Time
+ * Y: Max Distortion reached during the cycle (Range)
+ */
+export const generateRangeScatterData = (data, selectedSMA) => {
+    if (!data || data.length === 0) return [];
+
+    const distKey = `dist${selectedSMA}`;
+    const distHighKey = `dist${selectedSMA}_high`;
+    const distLowKey = `dist${selectedSMA}_low`;
+
+    const scatterPoints = [];
+    let currentCycle = null;
+
+    data.forEach(bar => {
+        if (bar[distKey] === null) return;
+
+        const dist = bar[distKey];
+        const distHigh = bar[distHighKey];
+        const distLow = bar[distLowKey];
+
+        // If we have proper date objects
+        const timestamp = new Date(bar.timestamp);
+
+        // State Machine to track cycles
+        if (!currentCycle) {
+            // Start of a cycle: Price is away from SMA (0)
+            // We use a small threshold to avoid noise/floating point zero issues? 
+            // Or just strict 0 crossing? User said "leaves average".
+
+            if (dist > 0) {
+                currentCycle = {
+                    type: 'ABOVE',
+                    startTime: timestamp,
+                    maxDistortion: distHigh, // Initial max
+                    barsCount: 1
+                };
+            } else if (dist < 0) {
+                currentCycle = {
+                    type: 'BELOW',
+                    startTime: timestamp,
+                    maxDistortion: Math.abs(distLow), // Initial max (abs)
+                    barsCount: 1
+                };
+            }
+        } else {
+            // In Cycle
+            if (currentCycle.type === 'ABOVE') {
+                // Update Max
+                if (distHigh > currentCycle.maxDistortion) currentCycle.maxDistortion = distHigh;
+                currentCycle.barsCount++;
+
+                // Check for End (Return to 0)
+                if (distLow <= 0) {
+                    // Cycle Ended
+                    const hours = currentCycle.startTime.getHours();
+                    const minutes = currentCycle.startTime.getMinutes();
+                    const timeInMinutes = hours * 60 + minutes;
+
+                    scatterPoints.push({
+                        x: timeInMinutes,
+                        y: currentCycle.maxDistortion,
+                        timeLabel: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`,
+                        duration: currentCycle.barsCount,
+                        fullDate: currentCycle.startTime.toLocaleString()
+                    });
+
+                    currentCycle = null;
+                }
+            } else { // BELOW
+                // Update Max
+                const absLow = Math.abs(distLow);
+                if (absLow > currentCycle.maxDistortion) currentCycle.maxDistortion = absLow;
+                currentCycle.barsCount++;
+
+                // Check for End (Return to 0)
+                if (distHigh >= 0) {
+                    // Cycle Ended
+                    const hours = currentCycle.startTime.getHours();
+                    const minutes = currentCycle.startTime.getMinutes();
+                    const timeInMinutes = hours * 60 + minutes;
+
+                    scatterPoints.push({
+                        x: timeInMinutes,
+                        y: currentCycle.maxDistortion,
+                        timeLabel: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`,
+                        duration: currentCycle.barsCount,
+                        fullDate: currentCycle.startTime.toLocaleString()
+                    });
+
+                    currentCycle = null;
+                }
+            }
+        }
+    });
+
+    return scatterPoints;
+};
