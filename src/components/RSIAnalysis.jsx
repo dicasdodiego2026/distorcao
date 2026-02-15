@@ -25,7 +25,6 @@ const RSIAnalysis = ({ data, filename }) => {
     // Helper to format timestamps safely
     const formatTime = (dateObj) => {
         if (!dateObj) return '';
-        if (typeof dateObj === 'string') return dateObj; // Should not happen with fix
         if (dateObj instanceof Date) {
             return dateObj.toLocaleString('pt-BR', {
                 hour: '2-digit',
@@ -44,7 +43,6 @@ const RSIAnalysis = ({ data, filename }) => {
             let date;
             if (t.signalTime instanceof Date) date = t.signalTime;
             else {
-                // Fallback if string, though we fixed this
                 date = new Date(t.signalTime);
             }
 
@@ -74,9 +72,6 @@ const RSIAnalysis = ({ data, filename }) => {
     const formatXAxis = (tickItem) => {
         const hours = Math.floor(tickItem / 60);
         const minutes = tickItem % 60;
-        // Show label every hour to check overcrowding?
-        // User asked for 30 min space. We can show all or filter.
-        // Let's return formatted string
         return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
     };
 
@@ -103,6 +98,62 @@ const RSIAnalysis = ({ data, filename }) => {
             </div>
         );
     };
+
+    // --- Analytical Metrics Calculation ---
+    const analyticalMetrics = useMemo(() => {
+        const totalSignals = trades.length;
+        if (totalSignals === 0) return null;
+
+        const targetHit = trades.filter(t => t.mfeTicks >= 20);
+        const zeroDrawdown = trades.filter(t => t.maeTicks === 0);
+        const minDrawdown = trades.filter(t => t.maeTicks <= 2);
+
+        // Best Time Window Analysis (30 min buckets)
+        const timeBuckets = {};
+        trades.forEach(t => {
+            if (t.mfeTicks < 20) return; // Consider only WINNING trades for "Best Window" to filter out noise, or all? 
+            // User said "melhor intervalo... com menor recuo antes de atingir os 20 ticks". 
+            // Matches implies we check trades that DID hit 20 ticks.
+
+            let date = t.signalTime instanceof Date ? t.signalTime : new Date(t.signalTime);
+            const hour = date.getHours();
+            const minute = date.getMinutes();
+            // Bucket: 09:00, 09:30, 10:00...
+            const bucketStartMinute = minute < 30 ? 0 : 30;
+            const label = `${String(hour).padStart(2, '0')}:${String(bucketStartMinute).padStart(2, '0')} - ${String(hour).padStart(2, '0')}:${String(bucketStartMinute + 29).padStart(2, '0')}`;
+
+            if (!timeBuckets[label]) timeBuckets[label] = { totalMae: 0, count: 0, positions: [] };
+            timeBuckets[label].totalMae += t.maeTicks;
+            timeBuckets[label].count++;
+            timeBuckets[label].positions.push(t.maeTicks);
+        });
+
+        let bestWindow = { label: 'N/A', avgMae: 999, count: 0 };
+        Object.entries(timeBuckets).forEach(([label, stats]) => {
+            const avg = stats.totalMae / stats.count;
+            if (stats.count >= 5 && avg < bestWindow.avgMae) { // Min 5 trades to be significant
+                bestWindow = { label, avgMae: avg, count: stats.count };
+            }
+        });
+        // Fallback if no window has 5 trades
+        if (bestWindow.label === 'N/A' && Object.keys(timeBuckets).length > 0) {
+            Object.entries(timeBuckets).forEach(([label, stats]) => {
+                const avg = stats.totalMae / stats.count;
+                if (avg < bestWindow.avgMae) {
+                    bestWindow = { label, avgMae: avg, count: stats.count };
+                }
+            });
+        }
+
+        return {
+            total: totalSignals,
+            targetHit: { count: targetHit.length, perc: (targetHit.length / totalSignals * 100).toFixed(2) },
+            zeroDrawdown: { count: zeroDrawdown.length, perc: (zeroDrawdown.length / totalSignals * 100).toFixed(2) },
+            minDrawdown: { count: minDrawdown.length, perc: (minDrawdown.length / totalSignals * 100).toFixed(2) },
+            bestWindow
+        };
+    }, [trades]);
+
 
     return (
         <div className="space-y-6">
@@ -173,9 +224,7 @@ const RSIAnalysis = ({ data, filename }) => {
                                 fontSize={10}
                                 tickLine={true}
                                 axisLine={{ stroke: '#cbd5e1' }}
-                                interval={1} // Try to show more labels, maybe every hour (interval 1 mean skip 1?) No in Recharts interval is index based or 'preserveStartEnd'
-                                // If we pass ticks array, Recharts usually respects it.
-                                // With 48 ticks (30 min), might be crowded. Let's rely on Recharts auto-hide if needed or rotate.
+                                interval={1}
                                 angle={-45}
                                 textAnchor="end"
                                 height={60}
@@ -200,57 +249,65 @@ const RSIAnalysis = ({ data, filename }) => {
                         </ScatterChart>
                     </ResponsiveContainer>
                 </div>
-                <div className="mt-2 text-xs text-center text-slate-500">
-                    Pontos representam o prejuízo máximo (em ticks) de cada trade iniciado neste horário.
-                </div>
             </div>
 
-            {/* Trade Log Table */}
-            <div className="bg-white p-6 rounded-lg shadow border border-slate-200">
-                <div className="pb-4">
-                    <h3 className="font-bold text-lg text-slate-800">Trade Log</h3>
-                </div>
-                <div className="overflow-auto max-h-[500px]">
-                    <table className="w-full text-sm text-left border-collapse">
-                        <thead className="bg-slate-50 text-slate-700 font-semibold sticky top-0">
-                            <tr>
-                                <th className="px-4 py-3 border-b">Signal Time</th>
-                                <th className="px-4 py-3 border-b">Type</th>
-                                <th className="px-4 py-3 border-b">RSI</th>
-                                <th className="px-4 py-3 border-b">Entry</th>
-                                <th className="px-4 py-3 border-b">Max Gain</th>
-                                <th className="px-4 py-3 border-b">Max Drawdown</th>
-                                <th className="px-4 py-3 border-b">Status (20 Ticks)</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {trades.map((trade) => (
-                                <tr key={trade.id} className="hover:bg-slate-50 transition-colors">
-                                    <td className="px-4 py-3 text-slate-600">{formatTime(trade.signalTime)}</td>
-                                    <td className="px-4 py-3">
-                                        <span className={`px-2 py-1 rounded text-xs font-bold ${trade.signal === 'BUY' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                            {trade.signal}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3 text-slate-600">{trade.rsi}</td>
-                                    <td className="px-4 py-3 text-slate-600 font-mono">{trade.entryPrice}</td>
-                                    <td className="px-4 py-3 text-green-600 font-medium">+{trade.mfeTicks} tk</td>
-                                    <td className="px-4 py-3 text-red-600 font-medium">-{trade.maeTicks} tk</td>
-                                    <td className="px-4 py-3">
-                                        {trade.mfeTicks >= 20 ?
-                                            (trade.maeTicks === 0 ?
-                                                <span className="text-emerald-600 font-bold text-xs">✅ PERFECT</span> :
-                                                <span className="text-green-600 font-bold text-xs">✅ WIN</span>
-                                            ) :
-                                            <span className="text-red-500 font-bold text-xs">❌ FAIL</span>
-                                        }
+            {/* Analytical Summary Table */}
+            {analyticalMetrics && (
+                <div className="bg-white p-6 rounded-lg shadow border border-slate-200">
+                    <div className="pb-4">
+                        <h3 className="font-bold text-lg text-slate-800">Resultados Gerais</h3>
+                    </div>
+                    <div className="overflow-hidden rounded-lg border border-slate-200">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-slate-50 text-slate-700 font-semibold">
+                                <tr>
+                                    <th className="px-6 py-4 border-b">Métrica</th>
+                                    <th className="px-6 py-4 border-b">Valor</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                <tr className="hover:bg-slate-50">
+                                    <td className="px-6 py-4 font-medium text-slate-700">Total de Sinais Identificados</td>
+                                    <td className="px-6 py-4 font-bold text-slate-900">{analyticalMetrics.total}</td>
+                                </tr>
+                                <tr className="hover:bg-slate-50">
+                                    <td className="px-6 py-4 font-medium text-slate-700">Sinais que atingiram o alvo (eventualmente)</td>
+                                    <td className="px-6 py-4">
+                                        <span className="font-bold text-green-600">{analyticalMetrics.targetHit.count}</span>
+                                        <span className="text-slate-500 ml-2">({analyticalMetrics.targetHit.perc}%)</span>
                                     </td>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                                <tr className="hover:bg-slate-50">
+                                    <td className="px-6 py-4 font-medium text-slate-700">Sinais com ZERO retorno (0 ticks drawdown)</td>
+                                    <td className="px-6 py-4">
+                                        <span className="font-bold text-emerald-600">{analyticalMetrics.zeroDrawdown.count}</span>
+                                        <span className="text-slate-500 ml-2">({analyticalMetrics.zeroDrawdown.perc}%)</span>
+                                    </td>
+                                </tr>
+                                <tr className="hover:bg-slate-50">
+                                    <td className="px-6 py-4 font-medium text-slate-700">Sinais com retorno MÍNIMO (&lt;= 2 ticks)</td>
+                                    <td className="px-6 py-4">
+                                        <span className="font-bold text-indigo-600">{analyticalMetrics.minDrawdown.count}</span>
+                                        <span className="text-slate-500 ml-2">({analyticalMetrics.minDrawdown.perc}%)</span>
+                                    </td>
+                                </tr>
+                                <tr className="bg-indigo-50/50 hover:bg-indigo-50">
+                                    <td className="px-6 py-4 font-medium text-indigo-900">Melhor Intervalo (Menor Recuo)</td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex flex-col">
+                                            <span className="font-bold text-indigo-700">{analyticalMetrics.bestWindow.label}</span>
+                                            <span className="text-xs text-indigo-600">
+                                                Média de {analyticalMetrics.bestWindow.avgMae.toFixed(1)} ticks de recuo
+                                                (baseado em {analyticalMetrics.bestWindow.count} trades vencedores)
+                                            </span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 };
