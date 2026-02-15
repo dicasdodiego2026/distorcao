@@ -1,20 +1,22 @@
 import React, { useMemo } from 'react';
 import { analyzeRSITrades } from '../utils/indicators';
+import {
+    ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
+} from 'recharts';
 
 const RSIAnalysis = ({ data, filename }) => {
     if (!data || data.length === 0) return <div>No data for RSI analysis</div>;
 
-    // Detect Tick Size based on filename or data content (Price Level)
-    // MES/ES usually > 4000 (as of 2024/2025). RTY usually < 3000.
+    // Detect Tick Size
     const tickSize = useMemo(() => {
         const name = (filename || '').toUpperCase();
         if (name.includes('MES') || name.includes('ES')) return 0.25;
         if (name.includes('RTY')) return 0.1;
 
-        // Fallback: Check price level of first bar
+        // Fallback: Check price level
         const firstPrice = data[0]?.close || 0;
-        if (firstPrice > 4000) return 0.25; // Likely ES/MES
-        return 0.1; // Default to RTY/NQ/YM logic (NQ is 0.25 too, but let's stick to user context)
+        if (firstPrice > 4000) return 0.25;
+        return 0.1;
     }, [filename, data]);
 
     const analysis = useMemo(() => analyzeRSITrades(data, tickSize), [data, tickSize]);
@@ -23,7 +25,7 @@ const RSIAnalysis = ({ data, filename }) => {
     // Helper to format timestamps safely
     const formatTime = (dateObj) => {
         if (!dateObj) return '';
-        if (typeof dateObj === 'string') return dateObj;
+        if (typeof dateObj === 'string') return dateObj; // Should not happen with fix
         if (dateObj instanceof Date) {
             return dateObj.toLocaleString('pt-BR', {
                 hour: '2-digit',
@@ -36,34 +38,71 @@ const RSIAnalysis = ({ data, filename }) => {
         return String(dateObj);
     };
 
-    // Aggregate by Hour
-    const hourlyStats = useMemo(() => {
-        const buckets = {};
-        trades.forEach(trade => {
-            let hour = '00';
-            try {
-                // trade.signalTime is likely a Date object from parseLogData
-                const date = trade.signalTime instanceof Date ? trade.signalTime : new Date(trade.signalTime);
-                hour = String(date.getHours()).padStart(2, '0');
-            } catch (e) {
-                console.error("Error parsing date:", trade.signalTime);
+    // Prepare Scatter Plot Data (MAE vs Time)
+    const scatterData = useMemo(() => {
+        return trades.map(t => {
+            let date;
+            if (t.signalTime instanceof Date) date = t.signalTime;
+            else {
+                // Fallback if string, though we fixed this
+                date = new Date(t.signalTime);
             }
 
-            if (!buckets[hour]) buckets[hour] = { total: 0, wins: 0, totalMae: 0, count: 0 };
+            const minutes = date.getHours() * 60 + date.getMinutes();
+            const timeLabel = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-            buckets[hour].count++;
-            // Define "Win" as reaching 20 ticks (just for stats)
-            if (trade.mfeTicks >= 20) buckets[hour].wins++;
-            buckets[hour].totalMae += trade.maeTicks;
+            return {
+                x: minutes,
+                y: t.maeTicks,
+                timeLabel,
+                signal: t.signal,
+                fullDate: formatTime(date),
+                rsi: t.rsi
+            };
         });
-
-        return Object.entries(buckets).map(([hour, stats]) => ({
-            hour,
-            winRate: (stats.wins / stats.count) * 100,
-            avgMae: (stats.totalMae / stats.count).toFixed(1),
-            count: stats.count
-        })).sort((a, b) => a.hour.localeCompare(b.hour));
     }, [trades]);
+
+    // X-Axis Ticks (Every 30 mins)
+    const xAxisTicks = useMemo(() => {
+        const ticks = [];
+        for (let i = 0; i <= 1440; i += 30) {
+            ticks.push(i);
+        }
+        return ticks;
+    }, []);
+
+    const formatXAxis = (tickItem) => {
+        const hours = Math.floor(tickItem / 60);
+        const minutes = tickItem % 60;
+        // Show label every hour to check overcrowding?
+        // User asked for 30 min space. We can show all or filter.
+        // Let's return formatted string
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    };
+
+    const CustomTooltip = ({ active, payload, label }) => {
+        if (!active || !payload || !payload.length) return null;
+        const data = payload[0].payload;
+        return (
+            <div className="bg-slate-800 border border-slate-700 p-3 rounded shadow-xl text-xs z-50 text-white">
+                <p className="font-bold mb-1">{data.fullDate}</p>
+                <div className="flex justify-between gap-4 mb-1">
+                    <span>Sinal:</span>
+                    <span className={`font-bold ${data.signal === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>
+                        {data.signal}
+                    </span>
+                </div>
+                <div className="flex justify-between gap-4 mb-1">
+                    <span>RSI:</span>
+                    <span>{data.rsi}</span>
+                </div>
+                <div className="border-t border-slate-600 my-1 pt-1">
+                    <span className="block mb-1">Drawdown Máximo:</span>
+                    <span className="text-xl font-bold text-red-400">-{data.y} ticks</span>
+                </div>
+            </div>
+        );
+    };
 
     return (
         <div className="space-y-6">
@@ -111,26 +150,58 @@ const RSIAnalysis = ({ data, filename }) => {
                 </div>
             </div>
 
-            {/* Hourly Performance Chart */}
+            {/* RSI Drawdown Scatter Chart */}
             <div className="bg-white p-6 rounded-lg shadow border border-slate-200">
-                <div className="pb-4">
-                    <h3 className="font-bold text-lg text-slate-800">Hourly Performance (Target 20 Ticks)</h3>
+                <div className="pb-4 flex justify-between items-center">
+                    <h3 className="font-bold text-lg text-slate-800">
+                        Dispersão de Drawdown por Horário (RSI Cross)
+                    </h3>
+                    <span className="text-xs text-slate-500">MAE Ticks vs Hora do Dia</span>
                 </div>
-                <div className="h-64 w-full flex items-end gap-1">
-                    {hourlyStats.map(stat => (
-                        <div key={stat.hour} className="flex-1 flex flex-col items-center group relative">
-                            <div
-                                className={`w-full rounded-t ${stat.winRate > 50 ? 'bg-green-500' : 'bg-red-400'}`}
-                                style={{ height: `${stat.winRate}%` }}
+                <div className="h-[400px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 10 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                            <XAxis
+                                type="number"
+                                dataKey="x"
+                                name="Horário"
+                                domain={[0, 1440]}
+                                ticks={xAxisTicks}
+                                tickFormatter={formatXAxis}
+                                stroke="#64748b"
+                                fontSize={10}
+                                tickLine={true}
+                                axisLine={{ stroke: '#cbd5e1' }}
+                                interval={1} // Try to show more labels, maybe every hour (interval 1 mean skip 1?) No in Recharts interval is index based or 'preserveStartEnd'
+                                // If we pass ticks array, Recharts usually respects it.
+                                // With 48 ticks (30 min), might be crowded. Let's rely on Recharts auto-hide if needed or rotate.
+                                angle={-45}
+                                textAnchor="end"
+                                height={60}
                             />
-                            <span className="text-xs mt-1 text-slate-600">{stat.hour}</span>
-                            <div className="absolute bottom-full mb-2 hidden group-hover:block bg-slate-900 text-white text-xs p-2 rounded z-10 w-32 shadow-lg">
-                                Win Rate: {stat.winRate.toFixed(1)}%<br />
-                                Trades: {stat.count}<br />
-                                Avg MAE: {stat.avgMae}
-                            </div>
-                        </div>
-                    ))}
+                            <YAxis
+                                type="number"
+                                dataKey="y"
+                                name="Drawdown Ticks"
+                                domain={[0, 500]}
+                                stroke="#64748b"
+                                fontSize={12}
+                                tickLine={false}
+                                axisLine={{ stroke: '#cbd5e1' }}
+                                label={{ value: 'Max Drawdown (Ticks)', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 12 }}
+                            />
+                            <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3', stroke: '#94a3b8' }} />
+                            <Scatter name="Drawdowns" data={scatterData} shape="circle">
+                                {scatterData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.signal === 'BUY' ? '#ef4444' : '#f97316'} fillOpacity={0.6} />
+                                ))}
+                            </Scatter>
+                        </ScatterChart>
+                    </ResponsiveContainer>
+                </div>
+                <div className="mt-2 text-xs text-center text-slate-500">
+                    Pontos representam o prejuízo máximo (em ticks) de cada trade iniciado neste horário.
                 </div>
             </div>
 
