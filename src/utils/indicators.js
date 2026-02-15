@@ -97,7 +97,10 @@ export const analyzeRSITrades = (bars, tickSize = 0.1) => {
                 const bar = bars[j];
 
                 // Stop if day changes (intraday only)
-                if (j > entryIndex && bar.timestamp.split(' ')[0] !== entryBar.timestamp.split(' ')[0]) {
+                const currentDay = bar.timestamp instanceof Date ? bar.timestamp.getDate() : new Date(bar.timestamp).getDate();
+                const entryDay = entryBar.timestamp instanceof Date ? entryBar.timestamp.getDate() : new Date(entryBar.timestamp).getDate();
+
+                if (j > entryIndex && currentDay !== entryDay) {
                     break;
                 }
 
