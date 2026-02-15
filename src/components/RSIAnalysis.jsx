@@ -4,17 +4,51 @@ import { analyzeRSITrades } from '../utils/indicators';
 const RSIAnalysis = ({ data, filename }) => {
     if (!data || data.length === 0) return <div>No data for RSI analysis</div>;
 
-    // Detect Tick Size based on filename or data
-    const tickSize = filename.toUpperCase().includes('MES') ? 0.25 : 0.1;
+    // Detect Tick Size based on filename or data content (Price Level)
+    // MES/ES usually > 4000 (as of 2024/2025). RTY usually < 3000.
+    const tickSize = useMemo(() => {
+        const name = (filename || '').toUpperCase();
+        if (name.includes('MES') || name.includes('ES')) return 0.25;
+        if (name.includes('RTY')) return 0.1;
+
+        // Fallback: Check price level of first bar
+        const firstPrice = data[0]?.close || 0;
+        if (firstPrice > 4000) return 0.25; // Likely ES/MES
+        return 0.1; // Default to RTY/NQ/YM logic (NQ is 0.25 too, but let's stick to user context)
+    }, [filename, data]);
 
     const analysis = useMemo(() => analyzeRSITrades(data, tickSize), [data, tickSize]);
     const { trades, summary } = analysis;
+
+    // Helper to format timestamps safely
+    const formatTime = (dateObj) => {
+        if (!dateObj) return '';
+        if (typeof dateObj === 'string') return dateObj;
+        if (dateObj instanceof Date) {
+            return dateObj.toLocaleString('pt-BR', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                day: '2-digit',
+                month: '2-digit'
+            });
+        }
+        return String(dateObj);
+    };
 
     // Aggregate by Hour
     const hourlyStats = useMemo(() => {
         const buckets = {};
         trades.forEach(trade => {
-            const hour = trade.signalTime.split(' ')[1].split(':')[0];
+            let hour = '00';
+            try {
+                // trade.signalTime is likely a Date object from parseLogData
+                const date = trade.signalTime instanceof Date ? trade.signalTime : new Date(trade.signalTime);
+                hour = String(date.getHours()).padStart(2, '0');
+            } catch (e) {
+                console.error("Error parsing date:", trade.signalTime);
+            }
+
             if (!buckets[hour]) buckets[hour] = { total: 0, wins: 0, totalMae: 0, count: 0 };
 
             buckets[hour].count++;
@@ -66,11 +100,13 @@ const RSIAnalysis = ({ data, filename }) => {
 
                 <div className="bg-white p-4 rounded-lg shadow border border-slate-200">
                     <div className="pb-2">
-                        <h3 className="text-sm font-medium text-slate-500">Tick Size</h3>
+                        <h3 className="text-sm font-medium text-slate-500">Tick Size / Asset</h3>
                     </div>
                     <div>
                         <div className="text-2xl font-bold text-slate-900">{tickSize}</div>
-                        <p className="text-xs text-slate-400">{filename}</p>
+                        <p className="text-xs text-slate-400">
+                            {tickSize === 0.25 ? 'Likely MES/ES' : 'Likely RTY'}
+                        </p>
                     </div>
                 </div>
             </div>
@@ -119,7 +155,7 @@ const RSIAnalysis = ({ data, filename }) => {
                         <tbody className="divide-y divide-slate-100">
                             {trades.map((trade) => (
                                 <tr key={trade.id} className="hover:bg-slate-50 transition-colors">
-                                    <td className="px-4 py-3 text-slate-600">{trade.signalTime}</td>
+                                    <td className="px-4 py-3 text-slate-600">{formatTime(trade.signalTime)}</td>
                                     <td className="px-4 py-3">
                                         <span className={`px-2 py-1 rounded text-xs font-bold ${trade.signal === 'BUY' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                                             {trade.signal}
