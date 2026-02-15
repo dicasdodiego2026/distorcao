@@ -319,7 +319,7 @@ export function AnalysisDashboard() {
                                         </ScatterChart>
                                     </ResponsiveContainer>
                                 </div>
-                            </div>
+                            </>
                         )}
                     </div>
                 )}
