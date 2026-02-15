@@ -5,6 +5,7 @@ import {
 import { Activity, Upload, AlertCircle, Clock } from 'lucide-react';
 import { parseLogData, calculateSMA, calculateDistortions, generateScatterData, generateRangeScatterData } from '../utils/calculations';
 import { FileUpload } from './FileUpload';
+import RSIAnalysis from './RSIAnalysis';
 
 
 export function AnalysisDashboard() {
@@ -13,6 +14,7 @@ export function AnalysisDashboard() {
     const [error, setError] = useState(null);
     const [selectedSMA, setSelectedSMA] = useState(25);
     const [timezoneOffset, setTimezoneOffset] = useState(0);
+    const [activeTab, setActiveTab] = useState('DISTORTION');
 
     const handleDataLoaded = async (content) => { // Changed back to content to match FileUpload
         setLoading(true);
@@ -207,95 +209,118 @@ export function AnalysisDashboard() {
                             </button>
                         </div>
 
-                        {/* Main Scatter Chart */}
-                        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl h-[85vh]">
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                                    <Activity className="w-5 h-5 text-indigo-500" />
-                                    Dispersão de Distorção (Minuto a Minuto)
-                                </h3>
-                                <div className="text-xs text-slate-500">
-                                    Total de Pontos: <strong className="text-indigo-400">{scatterData.length}</strong>
-                                </div>
-                            </div>
-
-                            <ResponsiveContainer width="100%" height="100%">
-                                <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 10 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                                    <XAxis
-                                        type="number"
-                                        dataKey="x"
-                                        name="Horário"
-                                        domain={[0, 1440]}
-                                        ticks={xAxisTicks}
-                                        tickFormatter={formatXAxis}
-                                        stroke="#64748b"
-                                        fontSize={10}
-                                        tickLine={true}
-                                        axisLine={{ stroke: '#334155' }}
-                                        interval={5} // Show one label every 6 ticks (60 mins) approx if ticks is every 10 mins
-                                    />
-                                    <YAxis
-                                        type="number"
-                                        dataKey="y"
-                                        name="Distorção"
-                                        domain={[0, 800]}
-                                        stroke="#64748b"
-                                        fontSize={12}
-                                        tickLine={false}
-                                        axisLine={{ stroke: '#334155' }}
-                                        label={{ value: 'Ticks (Absoluto)', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 12 }}
-                                    />
-                                    <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3', stroke: '#ffffff30' }} />
-                                    <Scatter name="Distorções" data={scatterData} fill="#818cf8" shape="circle" />
-                                </ScatterChart>
-                            </ResponsiveContainer>
+                        {/* Tabs */}
+                        <div className="flex gap-4 border-b border-slate-800 pb-2">
+                            <button
+                                onClick={() => setActiveTab('DISTORTION')}
+                                className={`text-sm font-medium pb-1 ${activeTab === 'DISTORTION' ? 'text-indigo-400 border-b-2 border-indigo-500' : 'text-slate-500 hover:text-slate-300'}`}
+                            >
+                                Análise de Distorção
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('RSI')}
+                                className={`text-sm font-medium pb-1 ${activeTab === 'RSI' ? 'text-indigo-400 border-b-2 border-indigo-500' : 'text-slate-500 hover:text-slate-300'}`}
+                            >
+                                Análise RSI 14
+                            </button>
                         </div>
 
-                        {/* Range Scatter Plot */}
-                        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl h-[85vh]">
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                                    <Activity className="w-5 h-5 text-emerald-500" />
-                                    Dispersão de Range (Máxima Excursão por Ciclo)
-                                </h3>
-                                <div className="text-xs text-slate-500">
-                                    Total de Ciclos: <strong className="text-emerald-400">{rangeScatterData.length}</strong>
+                        {activeTab === 'RSI' ? (
+                            <RSIAnalysis data={data} filename={data[0]?.fullDate || 'Dados Carregados'} />
+                        ) : (
+                            <>
+
+                                {/* Main Scatter Chart */}
+                                <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl h-[85vh]">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                            <Activity className="w-5 h-5 text-indigo-500" />
+                                            Dispersão de Distorção (Minuto a Minuto)
+                                        </h3>
+                                        <div className="text-xs text-slate-500">
+                                            Total de Pontos: <strong className="text-indigo-400">{scatterData.length}</strong>
+                                        </div>
+                                    </div>
+
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 10 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                                            <XAxis
+                                                type="number"
+                                                dataKey="x"
+                                                name="Horário"
+                                                domain={[0, 1440]}
+                                                ticks={xAxisTicks}
+                                                tickFormatter={formatXAxis}
+                                                stroke="#64748b"
+                                                fontSize={10}
+                                                tickLine={true}
+                                                axisLine={{ stroke: '#334155' }}
+                                                interval={5} // Show one label every 6 ticks (60 mins) approx if ticks is every 10 mins
+                                            />
+                                            <YAxis
+                                                type="number"
+                                                dataKey="y"
+                                                name="Distorção"
+                                                domain={[0, 800]}
+                                                stroke="#64748b"
+                                                fontSize={12}
+                                                tickLine={false}
+                                                axisLine={{ stroke: '#334155' }}
+                                                label={{ value: 'Ticks (Absoluto)', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 12 }}
+                                            />
+                                            <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3', stroke: '#ffffff30' }} />
+                                            <Scatter name="Distorções" data={scatterData} fill="#818cf8" shape="circle" />
+                                        </ScatterChart>
+                                    </ResponsiveContainer>
+                                </div>
+
+                                {/* Range Scatter Plot */}
+                                <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl h-[85vh]">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                            <Activity className="w-5 h-5 text-emerald-500" />
+                                            Dispersão de Range (Máxima Excursão por Ciclo)
+                                        </h3>
+                                        <div className="text-xs text-slate-500">
+                                            Total de Ciclos: <strong className="text-emerald-400">{rangeScatterData.length}</strong>
+                                        </div>
+                                    </div>
+
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 10 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                                            <XAxis
+                                                type="number"
+                                                dataKey="x"
+                                                name="Horário"
+                                                domain={[0, 1440]}
+                                                ticks={xAxisTicks}
+                                                tickFormatter={formatXAxis}
+                                                stroke="#64748b"
+                                                fontSize={10}
+                                                tickLine={true}
+                                                axisLine={{ stroke: '#334155' }}
+                                                interval={5}
+                                            />
+                                            <YAxis
+                                                type="number"
+                                                dataKey="y"
+                                                name="Range Máximo"
+                                                domain={[0, 800]}
+                                                stroke="#64748b"
+                                                fontSize={12}
+                                                tickLine={false}
+                                                axisLine={{ stroke: '#334155' }}
+                                                label={{ value: 'Range Ticks', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 12 }}
+                                            />
+                                            <Tooltip content={<RangeTooltip />} cursor={{ strokeDasharray: '3 3', stroke: '#ffffff30' }} />
+                                            <Scatter name="Ranges" data={rangeScatterData} fill="#34d399" shape="cross" />
+                                        </ScatterChart>
+                                    </ResponsiveContainer>
                                 </div>
                             </div>
-
-                            <ResponsiveContainer width="100%" height="100%">
-                                <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 10 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                                    <XAxis
-                                        type="number"
-                                        dataKey="x"
-                                        name="Horário"
-                                        domain={[0, 1440]}
-                                        ticks={xAxisTicks}
-                                        tickFormatter={formatXAxis}
-                                        stroke="#64748b"
-                                        fontSize={10}
-                                        tickLine={true}
-                                        axisLine={{ stroke: '#334155' }}
-                                        interval={5}
-                                    />
-                                    <YAxis
-                                        type="number"
-                                        dataKey="y"
-                                        name="Range Máximo"
-                                        domain={[0, 800]}
-                                        stroke="#64748b"
-                                        fontSize={12}
-                                        tickLine={false}
-                                        axisLine={{ stroke: '#334155' }}
-                                        label={{ value: 'Range Ticks', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 12 }}
-                                    />
-                                    <Tooltip content={<RangeTooltip />} cursor={{ strokeDasharray: '3 3', stroke: '#ffffff30' }} />
-                                    <Scatter name="Ranges" data={rangeScatterData} fill="#34d399" shape="cross" />
-                                </ScatterChart>
-                            </ResponsiveContainer>
-                        </div>
+                        )}
                     </div>
                 )}
             </main>
