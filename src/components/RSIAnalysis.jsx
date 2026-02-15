@@ -108,49 +108,72 @@ const RSIAnalysis = ({ data, filename }) => {
         const zeroDrawdown = trades.filter(t => t.maeTicks === 0);
         const minDrawdown = trades.filter(t => t.maeTicks <= 2);
 
-        // Best Time Window Analysis (30 min buckets)
+        // Time Window Analysis (30 min buckets)
         const timeBuckets = {};
-        trades.forEach(t => {
-            if (t.mfeTicks < 20) return; // Consider only WINNING trades for "Best Window" to filter out noise, or all? 
-            // User said "melhor intervalo... com menor recuo antes de atingir os 20 ticks". 
-            // Matches implies we check trades that DID hit 20 ticks.
 
+        // First, group ALL trades to find total volume per bucket
+        trades.forEach(t => {
             let date = t.signalTime instanceof Date ? t.signalTime : new Date(t.signalTime);
             const hour = date.getHours();
             const minute = date.getMinutes();
-            // Bucket: 09:00, 09:30, 10:00...
             const bucketStartMinute = minute < 30 ? 0 : 30;
             const label = `${String(hour).padStart(2, '0')}:${String(bucketStartMinute).padStart(2, '0')} - ${String(hour).padStart(2, '0')}:${String(bucketStartMinute + 29).padStart(2, '0')}`;
 
-            if (!timeBuckets[label]) timeBuckets[label] = { totalMae: 0, count: 0, positions: [] };
-            timeBuckets[label].totalMae += t.maeTicks;
-            timeBuckets[label].count++;
-            timeBuckets[label].positions.push(t.maeTicks);
-        });
+            if (!timeBuckets[label]) {
+                timeBuckets[label] = {
+                    label,
+                    totalTrades: 0,
+                    wins: 0,
+                    totalMae: 0,
+                    winMae: 0
+                };
+            }
 
-        let bestWindow = { label: 'N/A', avgMae: 999, count: 0 };
-        Object.entries(timeBuckets).forEach(([label, stats]) => {
-            const avg = stats.totalMae / stats.count;
-            if (stats.count >= 5 && avg < bestWindow.avgMae) { // Min 5 trades to be significant
-                bestWindow = { label, avgMae: avg, count: stats.count };
+            timeBuckets[label].totalTrades++;
+            timeBuckets[label].totalMae += t.maeTicks; // Avg MAE of ALL trades
+
+            if (t.mfeTicks >= 20) {
+                timeBuckets[label].wins++;
+                timeBuckets[label].winMae += t.maeTicks; // MAE of WINNING trades only
             }
         });
-        // Fallback if no window has 5 trades
-        if (bestWindow.label === 'N/A' && Object.keys(timeBuckets).length > 0) {
-            Object.entries(timeBuckets).forEach(([label, stats]) => {
-                const avg = stats.totalMae / stats.count;
-                if (avg < bestWindow.avgMae) {
-                    bestWindow = { label, avgMae: avg, count: stats.count };
-                }
-            });
-        }
+
+        // Convert to array and filter significant volume
+        // Significant = at least 1% of total trades or min 10 trades
+        const minTrades = Math.max(10, Math.ceil(totalSignals * 0.01));
+
+        const intervals = Object.values(timeBuckets).map(bucket => {
+            const winRate = bucket.totalTrades > 0 ? (bucket.wins / bucket.totalTrades) * 100 : 0;
+            const avgMaeAll = bucket.totalTrades > 0 ? bucket.totalMae / bucket.totalTrades : 0;
+            const avgMaeWinners = bucket.wins > 0 ? bucket.winMae / bucket.wins : 0;
+
+            return {
+                ...bucket,
+                winRate,
+                avgMaeAll,
+                avgMaeWinners
+            };
+        }).filter(b => b.totalTrades >= minTrades);
+
+        // Sort by Win Rate (primary) and Low MAE for Winners (secondary)
+        // Or we can score them: Score = WinRate * (1 / (1 + AvgMaeWinners))
+        // User asked for "menor recuo e atingiu o alvo" -> High Win Rate + Low MAE
+        intervals.sort((a, b) => {
+            if (Math.abs(b.winRate - a.winRate) > 5) { // If win rate diff > 5%, prefer higher win rate
+                return b.winRate - a.winRate;
+            }
+            // Otherwise prefer lower MAE on winners
+            return a.avgMaeWinners - b.avgMaeWinners;
+        });
+
+        const topWindows = intervals.slice(0, 3); // Top 3
 
         return {
             total: totalSignals,
             targetHit: { count: targetHit.length, perc: (targetHit.length / totalSignals * 100).toFixed(2) },
             zeroDrawdown: { count: zeroDrawdown.length, perc: (zeroDrawdown.length / totalSignals * 100).toFixed(2) },
             minDrawdown: { count: minDrawdown.length, perc: (minDrawdown.length / totalSignals * 100).toFixed(2) },
-            bestWindow
+            topWindows
         };
     }, [trades]);
 
@@ -291,18 +314,36 @@ const RSIAnalysis = ({ data, filename }) => {
                                         <span className="text-slate-500 ml-2">({analyticalMetrics.minDrawdown.perc}%)</span>
                                     </td>
                                 </tr>
-                                <tr className="bg-indigo-50/50 hover:bg-indigo-50">
-                                    <td className="px-6 py-4 font-medium text-indigo-900">Melhor Intervalo (Menor Recuo)</td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex flex-col">
-                                            <span className="font-bold text-indigo-700">{analyticalMetrics.bestWindow.label}</span>
-                                            <span className="text-xs text-indigo-600">
-                                                Média de {analyticalMetrics.bestWindow.avgMae.toFixed(1)} ticks de recuo
-                                                (baseado em {analyticalMetrics.bestWindow.count} trades vencedores)
-                                            </span>
-                                        </div>
-                                    </td>
-                                </tr>
+                                {analyticalMetrics.topWindows.length > 0 && (
+                                    <>
+                                        <tr className="bg-slate-100/50">
+                                            <td colSpan={2} className="px-6 py-2 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">
+                                                Top 3 Melhores Horários (Maior Assertividade + Menor Risco)
+                                            </td>
+                                        </tr>
+                                        {analyticalMetrics.topWindows.map((window, idx) => (
+                                            <tr key={window.label} className="hover:bg-slate-50 border-b border-slate-100 last:border-0">
+                                                <td className="px-6 py-3 font-medium text-slate-700 flex items-center gap-2">
+                                                    <span className={`flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${idx === 0 ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-300' : 'bg-slate-200 text-slate-600'}`}>
+                                                        {idx + 1}
+                                                    </span>
+                                                    {window.label}
+                                                </td>
+                                                <td className="px-6 py-3">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-bold text-slate-900">
+                                                            {window.winRate.toFixed(1)}% Acerto
+                                                            <span className="text-xs font-normal text-slate-500 ml-1">({window.wins}/{window.totalTrades} trades)</span>
+                                                        </span>
+                                                        <span className="text-xs text-rose-600 font-medium">
+                                                            Média Recuo: {window.avgMaeWinners.toFixed(1)} ticks
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </>
+                                )}
                             </tbody>
                         </table>
                     </div>
